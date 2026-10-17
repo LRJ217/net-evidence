@@ -46,7 +46,12 @@ try {
     }
     & $GoExe test ./...
     if ($LASTEXITCODE -ne 0) { throw 'Go tests failed.' }
+    & $GoExe vet ./...
+    if ($LASTEXITCODE -ne 0) { throw 'Go vet failed.' }
     if ($Task -eq 'build') {
+        New-Item -ItemType Directory -Path (Join-Path $repoRoot 'build/bin') -Force | Out-Null
+        & $GoExe build -o (Join-Path $repoRoot 'build/bin/net-evidence-cli.exe') ./cmd/net-evidence
+        if ($LASTEXITCODE -ne 0) { throw 'CLI build failed.' }
         & $GoExe install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
         if ($LASTEXITCODE -ne 0) { throw 'Wails CLI install failed.' }
         & (Join-Path $env:GOBIN 'wails.exe') build

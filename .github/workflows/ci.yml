@@ -35,6 +35,14 @@ jobs:
         working-directory: frontend
       - name: Go tests
         run: go test ./...
+      - name: Go vet
+        run: go vet ./...
+      - name: Build CLI
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path build/bin -Force | Out-Null
+          go build -o build/bin/net-evidence-cli.exe ./cmd/net-evidence
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install pinned Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
       - name: Windows desktop build

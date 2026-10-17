@@ -14,7 +14,12 @@
 
 ## 阶段 1：探测引擎和 CLI
 
-定义目标与证据模型，实现输入规范化、DNS、TCP、TLS、HTTP 和本机代理探测，加入超时、取消、错误分类及跳过状态。CLI 输出 JSON。本地服务器覆盖成功、拒绝、超时、重定向和证书错误。
+- [x] 目标与证据模型、输入规范化
+- [x] DNS、TCP、TLS、HTTP 和本机环境探测
+- [x] 超时、取消、错误分类、跳过状态与 JSON CLI
+- [x] 本地服务器覆盖成功、拒绝、超时、重定向和证书错误
+
+验收：本地测试与 [阶段 1 核心提交的 Windows CI](https://github.com/LRJ217/net-evidence/actions/runs/39042973662) 通过。详细证据及局限见 [阶段 1 验证记录](verification-stage1.md)。
 
 ## 阶段 2：解释与分享
 

@@ -2,7 +2,7 @@
 
 Windows 本地网络故障证据工具。输入 URL、域名或 `host:port`，按 DNS、TCP、TLS、HTTP 和本机环境分层探测；将原始证据、带依据的“可能原因”和脱敏报告交给用户。
 
-> 阶段 0 已完成：构建与文档基线通过本地和 GitHub Actions 验证。下一步是阶段 1 的探测引擎与 CLI；当前桌面界面只是构建验证页。
+> 阶段 1 已实现独立的 Go 探测引擎和 CLI。当前桌面界面仍是构建验证页；规则、脱敏和分享报告在后续阶段实现。
 
 ## 目标与技术
 
@@ -21,6 +21,22 @@ NetEvidence 解决“用户只说打不开、支持人员难以复现”的问�
 ```
 
 若 `go` 已在 PATH 中，可省略 `-GoExe`。默认 `GOPROXY=https://goproxy.cn,direct`，可用 `-GoProxy` 覆盖。第一次构建需下载依赖。
+
+## 命令行诊断
+
+`-Task build` 会生成 `build/bin/net-evidence-cli.exe` 和桌面应用。示例：
+
+```powershell
+.\build\bin\net-evidence-cli.exe -timeout 15s 'https://example.com/path'
+.\build\bin\net-evidence-cli.exe 'example.com'
+.\build\bin\net-evidence-cli.exe '127.0.0.1:8080'
+```
+
+裸域名默认使用 HTTPS 443；`host:port` 的 443 使用 HTTPS，其他端口默认 HTTP。自定义 TLS 端口请明确写 `https://host:port`。输出为结构化 JSON，包含每层状态、耗时、错误类别和证据 ID。某层探测失败仍会输出 JSON；输入不合法则退出码为 2。
+
+**CLI 输出是未脱敏的本机原始证据**，可能包含 URL Token、代理、本机 IP 和 MAC。阶段 2 完成前不要将它直接贴到公开 Issue。HTTP 请求当前直连目标，系统代理只采集为证据。
+
+阶段 1 的实现边界及测试证据见 [验证记录](docs/verification-stage1.md)。
 
 ## 阶段
 
