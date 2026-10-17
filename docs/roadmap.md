@@ -23,7 +23,12 @@
 
 ## 阶段 2：解释与分享
 
-规则以证据 ID 解释可能原因。脱敏路径、用户、私网地址、MAC、Cookie、Authorization 和 URL Token。生成 JSON、HTML、Issue Markdown；通过隐私回归测试。
+- [x] 规则以证据 ID 解释可能原因，区分事实与推断
+- [x] 显式投影分享字段，移除 URL 路径与查询、IP、MAC、代理、证书名称及原始错误文本
+- [x] 生成 JSON、HTML、Issue Markdown，CLI 默认分享版并支持预览文件
+- [x] 隐私回归测试覆盖路径、用户、Cookie、Authorization、Token 和本机地址
+
+验收：本地 Go 测试、静态检查、CLI 三种格式实测通过。具体证据与局限见 [阶段 2 验证记录](verification-stage2.md)。
 
 ## 阶段 3：桌面体验
 
