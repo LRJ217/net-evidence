@@ -4,13 +4,13 @@
 
 ## 阶段 0：项目基线
 
-- [ ] 与远端历史一致的 Git 工作区
-- [ ] 仅当前进程生效的环境脚本
-- [ ] README、需求、架构与路线图
-- [ ] 固定 Go/Wails 与前端依赖
-- [ ] Go 测试、前端检查及 Windows 构建 CI
+- [x] 与远端历史一致的 Git 工作区
+- [x] 仅当前进程生效的环境脚本
+- [x] README、需求、架构与路线图
+- [x] 固定 Go/Wails 与前端依赖
+- [x] Go 测试、前端检查及 Windows 构建 CI
 
-验收：本地及 CI 三项检查通过，仓库仍私有。
+验收：本地检查与 [GitHub Actions Windows CI](https://github.com/LRJ217/net-evidence/actions/runs/39041219065) 通过；仓库仍私有。具体证据见 [阶段 0 验证记录](verification-stage0.md)。
 
 ## 阶段 1：探测引擎和 CLI
 
