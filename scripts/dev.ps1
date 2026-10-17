@@ -33,21 +33,19 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'npm version check failed.' }
     if ($Task -eq 'check') { return }
 
-    & $GoExe test ./...
-    if ($LASTEXITCODE -ne 0) { throw 'Go tests failed.' }
     Push-Location 'frontend'
     try {
         npm ci
         if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
         npm run check
         if ($LASTEXITCODE -ne 0) { throw 'Frontend check failed.' }
-        if ($Task -eq 'build') {
-            npm run build
-            if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed.' }
-        }
+        npm run build
+        if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed.' }
     } finally {
         Pop-Location
     }
+    & $GoExe test ./...
+    if ($LASTEXITCODE -ne 0) { throw 'Go tests failed.' }
     if ($Task -eq 'build') {
         & $GoExe install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
         if ($LASTEXITCODE -ne 0) { throw 'Wails CLI install failed.' }
