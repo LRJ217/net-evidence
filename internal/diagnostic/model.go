@@ -84,6 +84,7 @@ type HTTPData struct {
 type ProxyData struct {
 	Enabled       bool   `json:"enabled"`
 	Server        string `json:"server,omitempty"`
+	BypassList    string `json:"bypass_list,omitempty"`
 	AutoConfigURL string `json:"auto_config_url,omitempty"`
 	EnvPresent    bool   `json:"env_present"`
 }

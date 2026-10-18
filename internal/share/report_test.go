@@ -45,7 +45,7 @@ func TestSharedFormatsDoNotLeakRawEvidence(t *testing.T) {
 		Environment: diagnostic.Step[diagnostic.EnvironmentData]{ID: "environment", Status: diagnostic.StatusPartial,
 			Error: &diagnostic.ProbeError{Kind: "unknown", Message: secretPath},
 			Data: &diagnostic.EnvironmentData{ProxyError: secretPath,
-				Proxy:      diagnostic.ProxyData{Enabled: true, Server: secretProxy, AutoConfigURL: "http://proxy/" + secretToken},
+				Proxy:      diagnostic.ProxyData{Enabled: true, Server: secretProxy, BypassList: "*." + secretToken, AutoConfigURL: "http://proxy/" + secretToken},
 				Interfaces: []diagnostic.InterfaceData{{Name: "alice-ethernet", Addresses: []string{"192.168.1.100/24"}, MAC: secretMAC}}}},
 	}
 	before, _ := json.Marshal(raw)
@@ -166,6 +166,26 @@ func TestProxySuccessExplainsDirectFailure(t *testing.T) {
 	findings := Analyze(r)
 	if len(findings) != 2 || findings[1].ID != "proxy_path_confirmed" || findings[1].EvidenceIDs[0] != "proxy_http" {
 		t.Fatalf("proxy path was not explained: %+v", findings)
+	}
+}
+
+func TestBypassExplainsSkippedManualProxyProbe(t *testing.T) {
+	r := diagnostic.Result{
+		Target: diagnostic.Target{Host: "api.example.com"},
+		TCP: diagnostic.Step[diagnostic.TCPData]{Status: diagnostic.StatusFailure,
+			Error: &diagnostic.ProbeError{Kind: "timeout"}},
+		ProxyHTTP: &diagnostic.Step[diagnostic.HTTPData]{Status: diagnostic.StatusSkipped, Reason: "proxy_bypass"},
+		Environment: diagnostic.Step[diagnostic.EnvironmentData]{Data: &diagnostic.EnvironmentData{
+			Proxy: diagnostic.ProxyData{Enabled: true, BypassList: "*.example.com"},
+		}},
+	}
+	findings := Analyze(r)
+	if len(findings) != 2 || findings[1].ID != "proxy_bypass" {
+		t.Fatalf("manual proxy bypass was not explained: %+v", findings)
+	}
+	shared := Build(r)
+	if shared.Evidence.ProxyHTTP.Reason != "proxy_bypass" || shared.Evidence.Environment.Data.Proxy.BypassList != "[PROXY_REDACTED]" {
+		t.Fatalf("bypass reason or privacy was lost: %+v", shared.Evidence)
 	}
 }
 

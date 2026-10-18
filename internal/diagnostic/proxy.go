@@ -4,8 +4,10 @@ import (
 	"context"
 	"net"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // probeProxyHTTP observes the manual Windows proxy path independently of the
@@ -16,12 +18,38 @@ func probeProxyHTTP(ctx context.Context, target Target, options Options, config 
 		step.Status, step.Reason = StatusSkipped, "local_target"
 		return step
 	}
+	if config.Enabled && matchesProxyBypass(config.BypassList, target.Host) {
+		step.Status, step.Reason = StatusSkipped, "proxy_bypass"
+		return step
+	}
 	proxyURL, reason := manualProxyURL(config, target.Scheme)
 	if proxyURL == nil {
 		step.Status, step.Reason = StatusSkipped, reason
 		return step
 	}
 	return requestHTTP(ctx, target, options, proxyURL, options.ProxyTimeout, "proxy_http", "system_proxy", "")
+}
+
+// WinINet manual bypass lists accept host patterns separated by semicolons or
+// whitespace. This is only a decision about the manual proxy probe, not a
+// prediction of PAC or browser-specific routing.
+func matchesProxyBypass(list, host string) bool {
+	for _, pattern := range strings.FieldsFunc(list, func(r rune) bool { return r == ';' || unicode.IsSpace(r) }) {
+		if strings.EqualFold(pattern, "<local>") {
+			if net.ParseIP(host) == nil && !strings.Contains(host, ".") {
+				return true
+			}
+			continue
+		}
+		if strings.HasPrefix(pattern, "<") {
+			continue
+		}
+		expression := "(?i)^" + strings.ReplaceAll(regexp.QuoteMeta(pattern), `\*`, ".*") + "$"
+		if matched, err := regexp.MatchString(expression, host); err == nil && matched {
+			return true
+		}
+	}
+	return false
 }
 
 func manualProxyURL(config ProxyData, targetScheme string) (*url.URL, string) {

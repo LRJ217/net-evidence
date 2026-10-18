@@ -25,6 +25,7 @@ function evidenceStep(evidence: Evidence, id: string): Step {
 const proxyReason: Record<string, string> = {
   local_target: '本机目标无需经系统代理探测',
   proxy_disabled: '系统手动代理未启用',
+  proxy_bypass: '目标匹配系统手动代理绕过规则，未执行代理请求',
   pac_unsupported: '检测到 PAC 自动配置；当前无法执行其中的规则',
   manual_proxy_unavailable: '没有适用于此目标的手动代理地址',
   manual_proxy_invalid: '系统手动代理地址格式无法识别',
@@ -43,8 +44,8 @@ function factsFor(id: string, step: Step): string[] {
   ]
   if (id === 'http' || id === 'proxy_http') return [`状态码：${String(d.status_code ?? '—')}`, `响应跳数：${(d.hops as unknown[] | undefined)?.length ?? 0}`]
   if (id === 'environment') {
-    const proxy = d.proxy as { enabled?: boolean } | undefined
-    return [`系统代理：${proxy?.enabled ? '已启用' : '未启用'}`, `活动网卡：${(d.interfaces as unknown[] | undefined)?.length ?? 0} 个`]
+    const proxy = d.proxy as { enabled?: boolean; bypass_list?: string; auto_config_url?: string; env_present?: boolean } | undefined
+    return [`系统代理：${proxy?.enabled ? '已启用' : '未启用'}`, `手动代理绕过规则：${proxy?.bypass_list ? '已配置' : '未配置'}`, `PAC 自动配置：${proxy?.auto_config_url ? '已配置' : '未配置'}`, `环境变量代理：${proxy?.env_present ? '已配置' : '未配置'}`, `活动网卡：${(d.interfaces as unknown[] | undefined)?.length ?? 0} 个`]
   }
   return []
 }

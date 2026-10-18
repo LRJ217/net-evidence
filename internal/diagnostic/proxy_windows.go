@@ -15,11 +15,18 @@ func systemProxy() (ProxyData, error) {
 	}
 	defer key.Close()
 	data := ProxyData{}
+	manualEnabled := false
 	if value, _, err := key.GetIntegerValue("ProxyEnable"); err == nil {
-		data.Enabled = value != 0
+		manualEnabled = value != 0
+		data.Enabled = manualEnabled
 	}
-	if value, _, err := key.GetStringValue("ProxyServer"); err == nil {
-		data.Server = value
+	if manualEnabled {
+		if value, _, err := key.GetStringValue("ProxyServer"); err == nil {
+			data.Server = value
+		}
+		if value, _, err := key.GetStringValue("ProxyOverride"); err == nil {
+			data.BypassList = value
+		}
 	}
 	if value, _, err := key.GetStringValue("AutoConfigURL"); err == nil {
 		data.AutoConfigURL = value

@@ -15,7 +15,7 @@ React/TypeScript 界面
 
 当前引擎按 DNS、TCP、TLS、HTTP 顺序直连探测。TLS 诊断连接先获取对端证书，再用系统或指定的根证书执行独立验证；验证失败时保留证书证据并跳过 HTTP。HTTP 只读取响应头，记录逐跳状态与耗时，限制跳转次数。每层有独立超时，另有总超时与取消信号。
 
-Windows 代理信息来自当前用户的 Internet Settings 注册表，网卡信息来自 Go 网络接口 API。DNS、TCP、TLS、HTTP 四层保持直连，桌面端另外并行执行一次经手动系统代理的 HTTP 请求。代理层支持手动配置的 HTTP、HTTPS、SOCKS5 地址；PAC 自动配置、浏览器扩展代理和代理绕过规则尚不执行。代理响应与直连结果分别记录，避免把直连超时误写成网站不可访问。CLI 仍仅使用直连路径。
+Windows 代理信息来自当前用户的 Internet Settings 注册表，网卡信息来自 Go 网络接口 API。DNS、TCP、TLS、HTTP 四层保持直连，桌面端另外并行执行一次经手动系统代理的 HTTP 请求。代理层支持手动配置的 HTTP、HTTPS、SOCKS5 地址；当目标匹配 `ProxyOverride` 的主机名、`*` 通配符或 `<local>` 时跳过手动代理请求并保留原因。PAC 自动配置和浏览器扩展代理不执行，环境变量代理仅记录是否存在。代理响应与直连结果分别记录，避免把直连超时误写成网站不可访问。CLI 仍仅使用直连路径。绕过规则参考 [Microsoft WinINet 文档](https://learn.microsoft.com/en-us/windows/win32/wininet/enabling-internet-functionality)。
 
 桌面服务一次只运行一项诊断。探测层完成时通过 Wails 事件推送状态与耗时；取消信号经 Go context 传递，完成事件包含已获得的证据。原始结果以带版本号的 JSON 文件保存在当前用户的 `%LOCALAPPDATA%\NetEvidence\history`，先写临时文件再改名；读取时检查 ID、版本和大小，列表最多展示最近 100 条。历史摘要和桌面报告均从原始记录重新构建脱敏投影。对比只输出两次诊断的脱敏目标、各层状态与耗时、HTTP 状态码。
 

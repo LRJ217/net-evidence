@@ -134,3 +134,34 @@ func TestProxySkipReasons(t *testing.T) {
 		t.Fatalf("loopback should skip proxy: %+v", step)
 	}
 }
+
+func TestManualProxyBypass(t *testing.T) {
+	for _, tc := range []struct {
+		name, list, host string
+		want             bool
+	}{
+		{"exact case insensitive", "EXAMPLE.COM", "example.com", true},
+		{"wildcard subdomain", "*.example.com; other.local", "api.example.com", true},
+		{"wildcard does not match apex", "*.example.com", "example.com", false},
+		{"local hostname", "<local>", "intranet", true},
+		{"local excludes dotted host", "<local>", "intranet.example", false},
+		{"literal IP", "192.168.*", "192.168.1.2", true},
+		{"unrelated", "*.example.com", "youtube.com", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := matchesProxyBypass(tc.list, tc.host); got != tc.want {
+				t.Fatalf("matchesProxyBypass(%q, %q) = %v", tc.list, tc.host, got)
+			}
+		})
+	}
+	target, err := NormalizeTarget("https://api.example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	step := probeProxyHTTP(context.Background(), target, Options{}.withDefaults(), ProxyData{
+		Enabled: true, Server: "127.0.0.1:1", BypassList: "*.example.com",
+	})
+	if step.Status != StatusSkipped || step.Reason != "proxy_bypass" {
+		t.Fatalf("manual proxy probe should be skipped: %+v", step)
+	}
+}

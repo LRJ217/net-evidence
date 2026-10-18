@@ -128,6 +128,9 @@ func Analyze(r diagnostic.Result) []Finding {
 		} else {
 			add("proxy_http_failure", "代理路径请求失败", "通过已配置的手动代理未能取得 HTTP 响应；请检查代理服务和目标连接。", "proxy_http", "environment")
 		}
+	} else if r.ProxyHTTP != nil && r.ProxyHTTP.Status == diagnostic.StatusSkipped && r.ProxyHTTP.Reason == "proxy_bypass" &&
+		(observedFailure(r.DNS.Status, r.DNS.Error) || observedFailure(r.TCP.Status, r.TCP.Error) || observedFailure(r.HTTP.Status, r.HTTP.Error)) {
+		add("proxy_bypass", "手动代理规则排除了目标", "本次未执行手动代理请求，因为目标匹配了系统绕过规则；浏览器若使用 PAC 或扩展，实际路径仍可能不同。", "proxy_http", "environment")
 	} else if r.Environment.Data != nil && r.Environment.Data.Proxy.Enabled && !isLoopbackTarget(r.Target.Host) &&
 		(observedFailure(r.DNS.Status, r.DNS.Error) || observedFailure(r.TCP.Status, r.TCP.Error) || observedFailure(r.HTTP.Status, r.HTTP.Error)) {
 		add("proxy_path", "直连探测与代理访问可能不同", "本机配置了系统代理；代理路径未获得可比较的结果，浏览器访问结果可能不同。", "environment", "tcp", "http")
@@ -238,6 +241,9 @@ func sanitize(r diagnostic.Result) diagnostic.Result {
 		if d.Proxy.Server != "" {
 			proxy.Server = "[PROXY_REDACTED]"
 		}
+		if d.Proxy.BypassList != "" {
+			proxy.BypassList = "[PROXY_REDACTED]"
+		}
 		if d.Proxy.AutoConfigURL != "" {
 			proxy.AutoConfigURL = "[PROXY_REDACTED]"
 		}
@@ -271,7 +277,7 @@ func cleanHTTPData(d *diagnostic.HTTPData) *diagnostic.HTTPData {
 
 func safeProxyReason(reason string) string {
 	switch reason {
-	case "local_target", "proxy_disabled", "pac_unsupported", "manual_proxy_unavailable", "manual_proxy_invalid":
+	case "local_target", "proxy_disabled", "proxy_bypass", "pac_unsupported", "manual_proxy_unavailable", "manual_proxy_invalid":
 		return reason
 	case "":
 		return ""
