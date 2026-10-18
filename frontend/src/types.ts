@@ -21,6 +21,7 @@ export interface Evidence {
   tcp: Step<{ connected_address: string }>
   tls: Step<{ protocol: string; cipher_suite: string; hostname_valid: boolean; time_valid: boolean; verified: boolean }>
   http: Step<{ status_code: number; final_url: string; hops: { url: string; status_code: number; duration_ms: number }[] }>
+  proxy_http?: Step<{ status_code: number; final_url: string; transport: string; hops: { url: string; status_code: number; duration_ms: number }[] }>
   environment: Step<{ proxy: { enabled: boolean; env_present: boolean }; interfaces: { name: string; addresses: string[]; mac?: string }[] }>
 }
 

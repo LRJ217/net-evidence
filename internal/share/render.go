@@ -46,6 +46,9 @@ func RenderIssue(report Report) []byte {
 	writeIssueStep(&b, r.TCP.ID, r.TCP.Status, r.TCP.DurationMs, r.TCP.Error)
 	writeIssueStep(&b, r.TLS.ID, r.TLS.Status, r.TLS.DurationMs, r.TLS.Error)
 	writeIssueStep(&b, r.HTTP.ID, r.HTTP.Status, r.HTTP.DurationMs, r.HTTP.Error)
+	if r.ProxyHTTP != nil {
+		writeIssueStep(&b, r.ProxyHTTP.ID, r.ProxyHTTP.Status, r.ProxyHTTP.DurationMs, r.ProxyHTTP.Error)
+	}
 	writeIssueStep(&b, r.Environment.ID, r.Environment.Status, r.Environment.DurationMs, r.Environment.Error)
 	b.WriteString("\n## 关键事实\n\n")
 	if r.DNS.Data != nil {
@@ -56,6 +59,9 @@ func RenderIssue(report Report) []byte {
 	}
 	if r.HTTP.Data != nil {
 		fmt.Fprintf(&b, "- HTTP：状态码 %d，观察到 %d 跳响应。\n", r.HTTP.Data.StatusCode, len(r.HTTP.Data.Hops))
+	}
+	if r.ProxyHTTP != nil && r.ProxyHTTP.Data != nil {
+		fmt.Fprintf(&b, "- 代理访问：状态码 %d，观察到 %d 跳响应。\n", r.ProxyHTTP.Data.StatusCode, len(r.ProxyHTTP.Data.Hops))
 	}
 	if r.Environment.Data != nil {
 		fmt.Fprintf(&b, "- 本机环境：代理启用=%t，活动网卡 %d 个。\n", r.Environment.Data.Proxy.Enabled, len(r.Environment.Data.Interfaces))

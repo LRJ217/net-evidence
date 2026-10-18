@@ -101,6 +101,7 @@ type Result struct {
 	TCP           Step[TCPData]         `json:"tcp"`
 	TLS           Step[TLSData]         `json:"tls"`
 	HTTP          Step[HTTPData]        `json:"http"`
+	ProxyHTTP     *Step[HTTPData]       `json:"proxy_http,omitempty"`
 	Environment   Step[EnvironmentData] `json:"environment"`
 }
 
@@ -110,6 +111,12 @@ type Options struct {
 	TCPTimeout   time.Duration
 	TLSTimeout   time.Duration
 	HTTPTimeout  time.Duration
+	ProxyTimeout time.Duration
+	// ProbeSystemProxy enables an independent request through a manual proxy.
+	// The CLI leaves it off; the desktop enables it.
+	ProbeSystemProxy bool
+	// ProxyConfig allows a deterministic proxy configuration in local tests.
+	ProxyConfig  *ProxyData
 	MaxRedirects int
 	// RootCAs is useful for local integration tests and private PKI.
 	RootCAs *x509.CertPool
@@ -144,6 +151,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.HTTPTimeout <= 0 {
 		o.HTTPTimeout = 8 * time.Second
+	}
+	if o.ProxyTimeout <= 0 {
+		o.ProxyTimeout = 5 * time.Second
 	}
 	if o.MaxRedirects <= 0 {
 		o.MaxRedirects = 5

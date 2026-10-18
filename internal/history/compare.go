@@ -28,6 +28,17 @@ func Compare(left, right Record) Comparison {
 		comparisonRow("http", left.Result.HTTP.Status, right.Result.HTTP.Status, left.Result.HTTP.DurationMs, right.Result.HTTP.DurationMs),
 		comparisonRow("environment", left.Result.Environment.Status, right.Result.Environment.Status, left.Result.Environment.DurationMs, right.Result.Environment.DurationMs),
 	}
+	if left.Result.ProxyHTTP != nil || right.Result.ProxyHTTP != nil {
+		leftProxy := diagnostic.Step[diagnostic.HTTPData]{Status: diagnostic.StatusSkipped}
+		rightProxy := diagnostic.Step[diagnostic.HTTPData]{Status: diagnostic.StatusSkipped}
+		if left.Result.ProxyHTTP != nil {
+			leftProxy = *left.Result.ProxyHTTP
+		}
+		if right.Result.ProxyHTTP != nil {
+			rightProxy = *right.Result.ProxyHTTP
+		}
+		rows = append(rows, comparisonRow("proxy_http", leftProxy.Status, rightProxy.Status, leftProxy.DurationMs, rightProxy.DurationMs))
+	}
 	result := Comparison{Left: summarize(left), Right: summarize(right), Rows: rows}
 	if left.Result.HTTP.Data != nil {
 		result.LeftHTTPStatus = left.Result.HTTP.Data.StatusCode

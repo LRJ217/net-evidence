@@ -34,6 +34,10 @@ func TestSharedFormatsDoNotLeakRawEvidence(t *testing.T) {
 			Error: &diagnostic.ProbeError{Kind: "timeout", Message: secretHeader + secretProxy},
 			Data: &diagnostic.HTTPData{Transport: secretToken, FinalURL: "https://example.com/path/" + secretToken + "?auth=" + secretToken,
 				Hops: []diagnostic.HTTPHop{{URL: "https://example.com/path/" + secretToken + "?auth=" + secretToken, StatusCode: 302}}}},
+		ProxyHTTP: &diagnostic.Step[diagnostic.HTTPData]{ID: "proxy_http", Status: diagnostic.StatusFailure,
+			Error: &diagnostic.ProbeError{Kind: "timeout", Message: secretProxy + secretToken},
+			Data: &diagnostic.HTTPData{Transport: "system_proxy", FinalURL: "https://example.com/path/" + secretToken,
+				Hops: []diagnostic.HTTPHop{{URL: "https://example.com/path/" + secretToken + "?auth=" + secretToken, StatusCode: 302}}}},
 		Environment: diagnostic.Step[diagnostic.EnvironmentData]{ID: "environment", Status: diagnostic.StatusPartial,
 			Error: &diagnostic.ProbeError{Kind: "unknown", Message: secretPath},
 			Data: &diagnostic.EnvironmentData{ProxyError: secretPath,
@@ -69,6 +73,9 @@ func TestSharedFormatsDoNotLeakRawEvidence(t *testing.T) {
 	}
 	if len(report.Findings) == 0 || report.Findings[0].EvidenceIDs[0] != "tls" {
 		t.Fatalf("missing evidence reference: %+v", report.Findings)
+	}
+	if report.Evidence.ProxyHTTP == nil || report.Evidence.ProxyHTTP.Data.Transport != "system_proxy" {
+		t.Fatalf("proxy evidence was lost: %+v", report.Evidence.ProxyHTTP)
 	}
 }
 
@@ -120,5 +127,38 @@ func TestProxyInferenceOnlyForRemoteTarget(t *testing.T) {
 	r.Target.Host = "127.0.0.1"
 	if findings = Analyze(r); len(findings) != 1 {
 		t.Fatalf("loopback should not imply proxy path: %+v", findings)
+	}
+}
+
+func TestProxySuccessExplainsDirectFailure(t *testing.T) {
+	r := diagnostic.Result{
+		Target: diagnostic.Target{Host: "example.com"},
+		TCP:    diagnostic.Step[diagnostic.TCPData]{Status: diagnostic.StatusFailure},
+		ProxyHTTP: &diagnostic.Step[diagnostic.HTTPData]{Status: diagnostic.StatusSuccess,
+			Data: &diagnostic.HTTPData{StatusCode: 200, Transport: "system_proxy"}},
+	}
+	findings := Analyze(r)
+	if len(findings) != 2 || findings[1].ID != "proxy_path_confirmed" || findings[1].EvidenceIDs[0] != "proxy_http" {
+		t.Fatalf("proxy path was not explained: %+v", findings)
+	}
+}
+
+func TestCancellationIsNotReportedAsNetworkFailure(t *testing.T) {
+	r := diagnostic.Result{
+		Target: diagnostic.Target{Host: "example.com"},
+		HTTP: diagnostic.Step[diagnostic.HTTPData]{Status: diagnostic.StatusFailure,
+			Error: &diagnostic.ProbeError{Kind: "canceled"}},
+	}
+	findings := Analyze(r)
+	if len(findings) != 1 || findings[0].ID != "diagnosis_canceled" {
+		t.Fatalf("cancel was misinterpreted: %+v", findings)
+	}
+	r.ProxyHTTP = &diagnostic.Step[diagnostic.HTTPData]{Status: diagnostic.StatusSuccess,
+		Data: &diagnostic.HTTPData{StatusCode: 200, Transport: "system_proxy"}}
+	findings = Analyze(r)
+	for _, finding := range findings {
+		if finding.ID == "proxy_path_confirmed" {
+			t.Fatalf("cancel was treated as direct failure: %+v", findings)
+		}
 	}
 }

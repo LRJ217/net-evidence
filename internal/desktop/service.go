@@ -40,6 +40,7 @@ type activeRun struct {
 
 type Service struct {
 	mu     sync.Mutex
+	emitMu sync.Mutex
 	active *activeRun
 	store  history.Store
 	run    Runner
@@ -80,8 +81,9 @@ func (s *Service) Start(input string, timeoutSeconds int) (string, error) {
 
 func (s *Service) execute(ctx context.Context, id, input string, timeout time.Duration) {
 	result, err := s.run(ctx, input, diagnostic.Options{
-		TotalTimeout: timeout,
-		HTTPTimeout:  timeout,
+		TotalTimeout:     timeout,
+		HTTPTimeout:      timeout,
+		ProbeSystemProxy: true,
 		OnStep: func(step diagnostic.StepProgress) {
 			s.send("diagnostic:progress", ProgressEvent{RunID: id, Step: step})
 		},
@@ -115,6 +117,8 @@ func (s *Service) finish(id string) {
 
 func (s *Service) send(name string, payload any) {
 	if s.emit != nil {
+		s.emitMu.Lock()
+		defer s.emitMu.Unlock()
 		s.emit(name, payload)
 	}
 }

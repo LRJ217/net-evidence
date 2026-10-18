@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"syscall"
@@ -39,7 +40,23 @@ func Run(ctx context.Context, input string, options Options) (result Result, err
 	defer func() { result.DurationMs = time.Since(start).Milliseconds() }()
 
 	result.Environment = probeEnvironment()
+	if options.ProxyConfig != nil {
+		result.Environment.Data.Proxy = *options.ProxyConfig
+	}
 	progress(options, "environment", result.Environment.Status, result.Environment.DurationMs)
+	if options.ProbeSystemProxy {
+		proxyData := result.Environment.Data.Proxy
+		proxyDone := make(chan Step[HTTPData], 1)
+		go func() {
+			step := probeProxyHTTP(ctx, target, options, proxyData)
+			progress(options, "proxy_http", step.Status, step.DurationMs)
+			proxyDone <- step
+		}()
+		defer func() {
+			step := <-proxyDone
+			result.ProxyHTTP = &step
+		}()
+	}
 	result.DNS = probeDNS(ctx, target.Host, options.DNSTimeout, options.Resolver)
 	progress(options, "dns", result.DNS.Status, result.DNS.DurationMs)
 	if result.DNS.Status != StatusSuccess {
@@ -251,15 +268,23 @@ func (transport captureTransport) RoundTrip(request *http.Request) (*http.Respon
 }
 
 func probeHTTP(parent context.Context, target Target, options Options) Step[HTTPData] {
-	step := Step[HTTPData]{ID: "http"}
-	ctx, cancel := context.WithTimeout(parent, options.HTTPTimeout)
+	return requestHTTP(parent, target, options, nil, options.HTTPTimeout, "http", "direct")
+}
+
+func requestHTTP(parent context.Context, target Target, options Options, proxyURL *url.URL, timeout time.Duration, id, transport string) Step[HTTPData] {
+	step := Step[HTTPData]{ID: id}
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	start := time.Now()
 	hops := []HTTPHop{}
+	var proxy func(*http.Request) (*url.URL, error)
+	if proxyURL != nil {
+		proxy = http.ProxyURL(proxyURL)
+	}
 	base := &http.Transport{
-		Proxy:                 nil, // Direct probe; system proxy is recorded separately.
+		Proxy:                 proxy,
 		DisableKeepAlives:     true,
-		ResponseHeaderTimeout: options.HTTPTimeout,
+		ResponseHeaderTimeout: timeout,
 		TLSClientConfig:       &tls.Config{RootCAs: options.RootCAs},
 	}
 	defer base.CloseIdleConnections()
@@ -283,7 +308,7 @@ func probeHTTP(parent context.Context, target Target, options Options) Step[HTTP
 	}
 	response, err := client.Do(request)
 	step.DurationMs = time.Since(start).Milliseconds()
-	data := HTTPData{Hops: hops, Transport: "direct"}
+	data := HTTPData{Hops: hops, Transport: transport}
 	step.Data = &data
 	if err != nil {
 		step.Status = StatusFailure

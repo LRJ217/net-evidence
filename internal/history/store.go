@@ -156,11 +156,20 @@ func summarize(record Record) Summary {
 	r := record.Result
 	outcome := "partial"
 	switch {
+	case isCanceled(r.DNS.Error) || isCanceled(r.TCP.Error) || isCanceled(r.TLS.Error) || isCanceled(r.HTTP.Error) ||
+		(r.ProxyHTTP != nil && isCanceled(r.ProxyHTTP.Error)):
+		outcome = "partial"
 	case r.DNS.Status == diagnostic.StatusFailure || r.TCP.Status == diagnostic.StatusFailure ||
 		r.TLS.Status == diagnostic.StatusFailure || r.HTTP.Status == diagnostic.StatusFailure:
-		outcome = "failure"
+		if r.ProxyHTTP != nil && r.ProxyHTTP.Status == diagnostic.StatusSuccess && r.ProxyHTTP.Data != nil && r.ProxyHTTP.Data.StatusCode < 400 {
+			outcome = "proxy_accessible"
+		} else {
+			outcome = "failure"
+		}
 	case r.HTTP.Status == diagnostic.StatusSuccess && r.HTTP.Data != nil && r.HTTP.Data.StatusCode >= 400:
 		outcome = "attention"
+	case r.ProxyHTTP != nil && r.ProxyHTTP.Status == diagnostic.StatusFailure:
+		outcome = "proxy_failure"
 	case r.HTTP.Status == diagnostic.StatusSuccess:
 		outcome = "success"
 	}
@@ -170,3 +179,5 @@ func summarize(record Record) Summary {
 		Outcome: outcome, DurationMs: r.DurationMs,
 	}
 }
+
+func isCanceled(err *diagnostic.ProbeError) bool { return err != nil && err.Kind == "canceled" }

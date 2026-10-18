@@ -72,3 +72,51 @@ func TestSaveListLoadAndCompare(t *testing.T) {
 		t.Fatal("accepted path traversal ID")
 	}
 }
+
+func TestProxyAccessibleSummaryAndComparison(t *testing.T) {
+	directFailure := sampleResult("https://example.com/", diagnostic.StatusFailure, 3000)
+	directFailure.Target = diagnostic.Target{URL: "https://example.com/", Scheme: "https", Host: "example.com", Port: "443"}
+	directFailure.ProxyHTTP = &diagnostic.Step[diagnostic.HTTPData]{ID: "proxy_http", Status: diagnostic.StatusSuccess, DurationMs: 120,
+		Data: &diagnostic.HTTPData{StatusCode: 200, Transport: "system_proxy"}}
+	store := Store{Dir: t.TempDir()}
+	left, err := store.Save(sampleResult("https://example.com/", diagnostic.StatusFailure, 3000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := store.Save(directFailure)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if right.Outcome != "proxy_accessible" {
+		t.Fatalf("wrong outcome: %+v", right)
+	}
+	leftRecord, _ := store.Load(left.ID)
+	rightRecord, _ := store.Load(right.ID)
+	comparison := Compare(leftRecord, rightRecord)
+	last := comparison.Rows[len(comparison.Rows)-1]
+	if last.ID != "proxy_http" || !last.Changed || last.RightStatus != diagnostic.StatusSuccess {
+		t.Fatalf("proxy comparison missing: %+v", last)
+	}
+}
+
+func TestCanceledSummaryIsPartial(t *testing.T) {
+	r := sampleResult("http://127.0.0.1:8080/", diagnostic.StatusSuccess, 1)
+	r.HTTP = diagnostic.Step[diagnostic.HTTPData]{ID: "http", Status: diagnostic.StatusFailure,
+		Error: &diagnostic.ProbeError{Kind: "canceled"}}
+	summary, err := (Store{Dir: t.TempDir()}).Save(r)
+	if err != nil || summary.Outcome != "partial" {
+		t.Fatalf("canceled outcome: %+v %v", summary, err)
+	}
+}
+
+func TestProxyFailureIsVisibleEvenWhenDirectWorks(t *testing.T) {
+	r := sampleResult("http://127.0.0.1:8080/", diagnostic.StatusSuccess, 1)
+	r.HTTP = diagnostic.Step[diagnostic.HTTPData]{ID: "http", Status: diagnostic.StatusSuccess,
+		Data: &diagnostic.HTTPData{StatusCode: 200}}
+	r.ProxyHTTP = &diagnostic.Step[diagnostic.HTTPData]{ID: "proxy_http", Status: diagnostic.StatusFailure,
+		Error: &diagnostic.ProbeError{Kind: "connection_refused"}}
+	summary, err := (Store{Dir: t.TempDir()}).Save(r)
+	if err != nil || summary.Outcome != "proxy_failure" {
+		t.Fatalf("proxy outcome: %+v %v", summary, err)
+	}
+}

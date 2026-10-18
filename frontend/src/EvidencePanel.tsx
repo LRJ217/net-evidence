@@ -7,23 +7,32 @@ export const layers = [
   { id: 'tls', label: 'TLS', subtitle: '验证证书与握手' },
   { id: 'http', label: 'HTTP', subtitle: '检查服务响应' },
   { id: 'environment', label: '本机环境', subtitle: '代理与网卡信息' },
+  { id: 'proxy_http', label: '代理访问', subtitle: '经系统手动代理请求' },
 ] as const
 
 export const statusText: Record<Status | 'pending', string> = {
   success: '通过', failure: '失败', partial: '部分完成', skipped: '跳过', pending: '等待中',
 }
-const outcomeText: Record<string, string> = { success: '可访问', failure: '有故障', attention: '需关注', partial: '未完成' }
+const outcomeText: Record<string, string> = { success: '直连可访问', failure: '有故障', attention: '需关注', partial: '未完成', proxy_accessible: '代理可访问', proxy_failure: '代理路径失败' }
 const formatText: Record<Format, string> = { json: 'JSON', html: 'HTML', issue: 'Issue Markdown' }
 
 export function dateText(value: string) { return new Date(value).toLocaleString('zh-CN', { hour12: false }) }
 
 function evidenceStep(evidence: Evidence, id: string): Step {
-  return evidence[id as keyof Pick<Evidence, 'dns' | 'tcp' | 'tls' | 'http' | 'environment'>] as Step
+  return (evidence[id as keyof Evidence] as Step | undefined) ?? { id, status: 'skipped', duration_ms: 0, reason: '旧记录未采集此路径' }
+}
+
+const proxyReason: Record<string, string> = {
+  local_target: '本机目标无需经系统代理探测',
+  proxy_disabled: '系统手动代理未启用',
+  pac_unsupported: '检测到 PAC 自动配置；当前无法执行其中的规则',
+  manual_proxy_unavailable: '没有适用于此目标的手动代理地址',
+  manual_proxy_invalid: '系统手动代理地址格式无法识别',
 }
 
 function factsFor(id: string, step: Step): string[] {
   const d = step.data as Record<string, unknown> | undefined
-  if (!d) return step.reason ? [step.reason] : []
+  if (!d) return step.reason ? [proxyReason[step.reason] ?? step.reason] : []
   if (id === 'dns') return [`IPv4：${(d.ipv4 as string[] | undefined)?.length ?? 0} 个`, `IPv6：${(d.ipv6 as string[] | undefined)?.length ?? 0} 个`]
   if (id === 'tcp') return ['目标端口已建立连接']
   if (id === 'tls') return [
@@ -32,7 +41,7 @@ function factsFor(id: string, step: Step): string[] {
     `证书时间：${d.time_valid ? '有效' : '未通过'}`,
     `信任验证：${d.verified ? '通过' : '未通过'}`,
   ]
-  if (id === 'http') return [`状态码：${String(d.status_code ?? '—')}`, `响应跳数：${(d.hops as unknown[] | undefined)?.length ?? 0}`]
+  if (id === 'http' || id === 'proxy_http') return [`状态码：${String(d.status_code ?? '—')}`, `响应跳数：${(d.hops as unknown[] | undefined)?.length ?? 0}`]
   if (id === 'environment') {
     const proxy = d.proxy as { enabled?: boolean } | undefined
     return [`系统代理：${proxy?.enabled ? '已启用' : '未启用'}`, `活动网卡：${(d.interfaces as unknown[] | undefined)?.length ?? 0} 个`]
@@ -56,7 +65,7 @@ export function EvidencePanel({ report, busy, progress, selectedSummary, selecte
   const [selectedLayer, setSelectedLayer] = useState<string>('dns')
   const finished = Object.keys(progress).length
   return <>
-    <div className="section-heading"><div><div className="eyebrow small">LIVE EVIDENCE</div><h2>分层证据</h2></div><span className="section-meta">{busy ? `已完成 ${finished} / 5 层` : report ? `耗时 ${report.evidence.duration_ms} ms` : '等待开始'}</span></div>
+    <div className="section-heading"><div><div className="eyebrow small">LIVE EVIDENCE</div><h2>分层证据</h2></div><span className="section-meta">{busy ? `已完成 ${finished} / ${layers.length} 层` : report ? `耗时 ${report.evidence.duration_ms} ms` : '等待开始'}</span></div>
     <div className="layer-grid">{layers.map((layer, index) => {
       const step = report ? evidenceStep(report.evidence, layer.id) : progress[layer.id]
       const status = step?.status ?? 'pending'
