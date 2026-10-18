@@ -33,7 +33,7 @@ const proxyReason: Record<string, string> = {
 function factsFor(id: string, step: Step): string[] {
   const d = step.data as Record<string, unknown> | undefined
   if (!d) return step.reason ? [proxyReason[step.reason] ?? step.reason] : []
-  if (id === 'dns') return [`IPv4：${(d.ipv4 as string[] | undefined)?.length ?? 0} 个`, `IPv6：${(d.ipv6 as string[] | undefined)?.length ?? 0} 个`]
+  if (id === 'dns') return [...(step.reason === 'literal_ip' ? ['字面量 IP，无需域名解析'] : []), `IPv4：${(d.ipv4 as string[] | undefined)?.length ?? 0} 个`, `IPv6：${(d.ipv6 as string[] | undefined)?.length ?? 0} 个`]
   if (id === 'tcp') return step.status === 'success' ? ['至少一个探测地址建立了连接'] : []
   if (id === 'tls') return [
     `协议：${String(d.protocol ?? '未知')}`,
@@ -60,9 +60,10 @@ interface Props {
   preview: string
   onFormat: (format: Format) => void
   onExport: () => void
+  onCopy: () => void
 }
 
-export function EvidencePanel({ report, localTCP, busy, progress, selectedSummary, selectedId, format, preview, onFormat, onExport }: Props) {
+export function EvidencePanel({ report, localTCP, busy, progress, selectedSummary, selectedId, format, preview, onFormat, onExport, onCopy }: Props) {
   const [selectedLayer, setSelectedLayer] = useState<string>('dns')
   const finished = Object.keys(progress).length
   return <>
@@ -90,7 +91,7 @@ export function EvidencePanel({ report, localTCP, busy, progress, selectedSummar
         <section className="panel findings-panel"><div className="panel-heading"><div><div className="eyebrow small">INTERPRETATION</div><h2>可能原因</h2></div><span className="panel-count">{report.findings.length} 条推断</span></div><div className="findings-list">{report.findings.map(finding => <article key={finding.id}><div className="finding-marker">?</div><div><h3>{finding.title}</h3><p>{finding.explanation}</p><small>依据：{finding.evidence_ids.map(id => <code key={id}>{id}</code>)}</small></div></article>)}</div></section>
         <section className="panel snapshot-panel"><div className="eyebrow small">SNAPSHOT</div><h2>本次诊断</h2><dl><div><dt>目标</dt><dd title={report.evidence.target.url}>{report.evidence.target.url}</dd></div><div><dt>开始时间</dt><dd>{dateText(report.evidence.started_at)}</dd></div><div><dt>记录</dt><dd>{selectedSummary ? outcomeText[selectedSummary.outcome] ?? selectedSummary.outcome : '未保存'}</dd></div><div><dt>隐私</dt><dd>分享版已脱敏</dd></div></dl><p className="privacy-note">{report.privacy_note}</p></section>
       </div>
-      <section className="panel preview-panel"><div className="panel-heading"><div><div className="eyebrow small">SHARE REPORT</div><h2>报告预览</h2></div><button className="secondary-button" onClick={onExport} disabled={!selectedId}>另存为文件 ↗</button></div><div className="format-tabs" role="tablist" aria-label="报告格式">{(['json', 'html', 'issue'] as Format[]).map(item => <button key={item} role="tab" aria-selected={format === item} className={format === item ? 'selected' : ''} onClick={() => onFormat(item)}>{formatText[item]}</button>)}</div>{format === 'html' && preview.startsWith('<!doctype') ? <iframe className="html-preview" title="脱敏 HTML 报告预览" sandbox="" srcDoc={preview} /> : <pre className="text-preview">{preview || '选择一条已保存记录以预览报告。'}</pre>}</section>
+      <section className="panel preview-panel"><div className="panel-heading"><div><div className="eyebrow small">SHARE REPORT</div><h2>报告预览</h2></div><div className="preview-actions"><button className="secondary-button" onClick={onCopy} disabled={!selectedId}>复制报告</button><button className="secondary-button" onClick={onExport} disabled={!selectedId}>另存为文件 ↗</button></div></div><div className="format-tabs" role="tablist" aria-label="报告格式">{(['json', 'html', 'issue'] as Format[]).map(item => <button key={item} role="tab" aria-selected={format === item} className={format === item ? 'selected' : ''} onClick={() => onFormat(item)}>{formatText[item]}</button>)}</div>{format === 'html' && preview.startsWith('<!doctype') ? <iframe className="html-preview" title="脱敏 HTML 报告预览" sandbox="" srcDoc={preview} /> : <pre className="text-preview">{preview || '选择一条已保存记录以预览报告。'}</pre>}</section>
     </> : <section className="empty-results"><div className="empty-symbol">⌁</div><h2>证据会在这里汇集</h2><p>运行诊断后，可查看逐层结果、可能原因和三种脱敏报告。</p></section>}
   </>
 }

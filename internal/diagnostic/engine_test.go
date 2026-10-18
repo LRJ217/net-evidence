@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -61,12 +62,12 @@ func TestHTTPRedirectEvidence(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result, err := Run(context.Background(), server.URL+"/start", Options{})
+	result, err := Run(context.Background(), server.URL+"/start", Options{Resolver: missingResolver{}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.DNS.Status != StatusSuccess || result.TCP.Status != StatusSuccess {
-		t.Fatalf("expected DNS and TCP success: %+v %+v", result.DNS, result.TCP)
+	if result.DNS.Status != StatusSkipped || result.DNS.Reason != "literal_ip" || result.TCP.Status != StatusSuccess {
+		t.Fatalf("literal IP should skip DNS and continue to TCP: %+v %+v", result.DNS, result.TCP)
 	}
 	if result.TLS.Status != StatusSkipped || result.HTTP.Status != StatusSuccess {
 		t.Fatalf("unexpected TLS/HTTP status: %+v %+v", result.TLS, result.HTTP)
@@ -77,6 +78,14 @@ func TestHTTPRedirectEvidence(t *testing.T) {
 	if result.HTTP.Data.Hops[0].StatusCode != http.StatusFound ||
 		result.HTTP.Data.Hops[1].StatusCode != http.StatusNoContent {
 		t.Fatalf("wrong redirect chain: %+v", result.HTTP.Data.Hops)
+	}
+}
+
+func TestConnectionResetClassification(t *testing.T) {
+	for _, err := range []error{syscall.ECONNRESET, syscall.Errno(10054)} {
+		if got := classifyError(fmt.Errorf("dial failed: %w", err), "unknown"); got != "connection_reset" {
+			t.Fatalf("reset classified as %q", got)
+		}
 	}
 }
 

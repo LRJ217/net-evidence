@@ -132,7 +132,19 @@ export function App() {
     try {
       const path = await api.ExportReport(selectedId, format)
       if (path) setNotice(`报告已保存：${path}`)
-    } catch (err) { setError(`保存失败：${message(err)}。若文件已存在，请换一个文件名。`) }
+    } catch (err) { setError(`保存失败：${message(err)}`) }
+  }
+
+  async function copyReport() {
+    const api = bridge()
+    const clipboard = window.runtime?.ClipboardSetText
+    if (!api || !clipboard || !selectedId) return
+    setError('')
+    try {
+      const content = await api.PreviewReport(selectedId, format)
+      if (!await clipboard(content)) throw new Error('剪贴板未接受报告内容')
+      setNotice('当前格式的脱敏报告已复制到剪贴板。')
+    } catch (err) { setError(`复制失败：${message(err)}`) }
   }
 
   function reconcileHistory(listing: HistoryListing, removedID?: string) {
@@ -208,7 +220,7 @@ export function App() {
             <div className="target-row"><span className="input-icon">◎</span><input id="target" value={input} onChange={event => setInput(event.target.value)} placeholder="例如 example.com、https://example.com 或 host:port" autoComplete="off" spellCheck={false} disabled={busy || !available} /><button className="primary-button" type="submit" disabled={!available || busy || !input.trim()}>{busy ? '诊断中…' : '开始诊断'} <span>→</span></button></div>
             <div className="target-options"><span>总超时</span><select value={timeout} onChange={event => setTimeoutSeconds(Number(event.target.value))} disabled={busy}><option value={10}>10 秒</option><option value={20}>20 秒</option><option value={30}>30 秒</option><option value={60}>60 秒</option></select><span className="option-note">整次上限；DNS/TCP 单层 3 秒，TLS/代理访问单层 5 秒。并行比较直连和系统手动代理。</span>{busy && <button className="cancel-button" type="button" onClick={() => void cancel()} disabled={canceling}>{canceling ? '正在取消…' : '取消诊断'}</button>}</div>
           </form>
-          <EvidencePanel report={report} localTCP={localTCP} busy={busy} progress={progress} selectedSummary={selectedSummary} selectedId={selectedId} format={format} preview={preview} onFormat={setFormat} onExport={() => void exportReport()} />
+          <EvidencePanel report={report} localTCP={localTCP} busy={busy} progress={progress} selectedSummary={selectedSummary} selectedId={selectedId} format={format} preview={preview} onFormat={setFormat} onExport={() => void exportReport()} onCopy={() => void copyReport()} />
         </> : <ComparePanel history={history.items} leftID={leftID} rightID={rightID} comparison={comparison} onLeft={id => { setLeftID(id); setComparison(null) }} onRight={id => { setRightID(id); setComparison(null) }} onCompare={() => void compare()} />}
       </div>
     </main>

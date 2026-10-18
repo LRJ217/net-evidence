@@ -59,6 +59,8 @@ func Analyze(r diagnostic.Result) []Finding {
 			add("diagnosis_canceled", "诊断已取消", "直连 TCP 探测被取消，不能据此判断目标端口故障。", "tcp")
 		case "connection_refused":
 			add("tcp_refused", "直连目标端口被拒绝", "直连目标时端口可能没有服务监听，或连接被主动拒绝。", "tcp")
+		case "connection_reset":
+			add("tcp_reset", "直连连接被重置", "连接建立过程中或建立后收到了重置信号；单次探测无法确认由目标服务还是中间网络设备发出。", "tcp")
 		case "timeout", "network_unreachable":
 			add("tcp_unreachable", "无法建立直连 TCP 连接", "直连路径可能受到网络路由、防火墙或目标服务影响；单次探测无法定位具体节点。", "tcp")
 		default:
@@ -182,6 +184,9 @@ func sanitize(r diagnostic.Result) diagnostic.Result {
 		HTTP:        cleanStep(r.HTTP, "http"),
 		Environment: cleanStep(r.Environment, "environment"),
 	}
+	if r.DNS.Status == diagnostic.StatusSkipped && r.DNS.Reason == "literal_ip" {
+		out.DNS.Reason = "literal_ip"
+	}
 	if r.ProxyHTTP != nil {
 		step := cleanStep(*r.ProxyHTTP, "proxy_http")
 		step.Reason = safeProxyReason(r.ProxyHTTP.Reason)
@@ -288,7 +293,7 @@ func cleanStep[T any](step diagnostic.Step[T], id string) diagnostic.Step[T] {
 
 func safeErrorKind(kind string) string {
 	switch kind {
-	case "canceled", "timeout", "dns_not_found", "dns_no_addresses", "connection_refused", "network_unreachable", "certificate_missing", "certificate_invalid", "tls_handshake_failed", "redirect_limit", "unknown":
+	case "canceled", "timeout", "dns_not_found", "dns_no_addresses", "connection_refused", "connection_reset", "network_unreachable", "certificate_missing", "certificate_invalid", "tls_handshake_failed", "redirect_limit", "unknown":
 		return kind
 	default:
 		return "other"

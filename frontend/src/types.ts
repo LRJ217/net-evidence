@@ -74,6 +74,6 @@ export interface DesktopBridge {
 declare global {
   interface Window {
     go?: { main?: { App?: DesktopBridge } }
-    runtime?: { EventsOn: (name: string, callback: (payload: unknown) => void) => () => void }
+    runtime?: { EventsOn: (name: string, callback: (payload: unknown) => void) => () => void; ClipboardSetText: (text: string) => Promise<boolean> }
   }
 }

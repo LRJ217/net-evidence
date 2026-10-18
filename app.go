@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/LRJ217/net-evidence/internal/desktop"
@@ -70,15 +73,20 @@ func (a *App) ExportReport(id, format string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var filename, pattern string
+	report, err := a.service.Report(id)
+	if err != nil {
+		return "", err
+	}
+	var suffix, pattern string
 	switch format {
 	case "json":
-		filename, pattern = "net-evidence-report.json", "*.json"
+		suffix, pattern = "json", "*.json"
 	case "html":
-		filename, pattern = "net-evidence-report.html", "*.html"
+		suffix, pattern = "html", "*.html"
 	case "issue":
-		filename, pattern = "net-evidence-issue.md", "*.md"
+		suffix, pattern = "md", "*.md"
 	}
+	filename := defaultReportName(report, suffix)
 	a.mu.RLock()
 	ctx := a.ctx
 	a.mu.RUnlock()
@@ -89,17 +97,48 @@ func (a *App) ExportReport(id, format string) (string, error) {
 	if err != nil || path == "" {
 		return "", err
 	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
+	if err := writeReportFile(path, content); err != nil {
 		return "", err
 	}
-	_, writeErr := file.WriteString(content)
-	closeErr := file.Close()
-	if writeErr != nil {
-		return "", writeErr
-	}
-	if closeErr != nil {
-		return "", closeErr
-	}
 	return path, nil
+}
+
+func defaultReportName(report share.Report, suffix string) string {
+	host := report.Evidence.Target.Host
+	if strings.HasPrefix(host, "[") || host == "" {
+		host = "target"
+	}
+	host = strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '-' {
+			return r
+		}
+		return '-'
+	}, host)
+	return fmt.Sprintf("net-evidence-%s-%s.%s", host, report.Evidence.StartedAt.Local().Format("20060102-150405"), suffix)
+}
+
+// The native save dialog asks the user before replacing an existing file.
+// Write to a sibling temporary file so a failed write leaves the old report intact.
+func writeReportFile(path, content string) error {
+	temp, err := os.CreateTemp(filepath.Dir(path), ".net-evidence-report-*.tmp")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(temp.Name())
+	if err := temp.Chmod(0600); err != nil {
+		temp.Close()
+		return err
+	}
+	if _, err := temp.WriteString(content); err != nil {
+		temp.Close()
+		return err
+	}
+	if err := temp.Sync(); err != nil {
+		temp.Close()
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temp.Name(), path)
 }

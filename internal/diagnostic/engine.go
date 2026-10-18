@@ -59,7 +59,7 @@ func Run(ctx context.Context, input string, options Options) (result Result, err
 	}
 	result.DNS = probeDNS(ctx, target.Host, options.DNSTimeout, options.Resolver)
 	progress(options, "dns", result.DNS.Status, result.DNS.DurationMs)
-	if result.DNS.Status != StatusSuccess {
+	if result.DNS.Status != StatusSuccess && !(result.DNS.Status == StatusSkipped && result.DNS.Reason == "literal_ip") {
 		result.TCP = skipped[TCPData]("tcp", "DNS did not resolve")
 		result.TLS = skipped[TLSData]("tls", "DNS did not resolve")
 		result.HTTP = skipped[HTTPData]("http", "DNS did not resolve")
@@ -108,6 +108,16 @@ func skipped[T any](id, reason string) Step[T] {
 
 func probeDNS(parent context.Context, host string, timeout time.Duration, resolver IPResolver) Step[DNSData] {
 	step := Step[DNSData]{ID: "dns"}
+	if ip := net.ParseIP(host); ip != nil {
+		data := DNSData{IPv4: []string{}, IPv6: []string{}}
+		if ip.To4() != nil {
+			data.IPv4 = append(data.IPv4, ip.String())
+		} else {
+			data.IPv6 = append(data.IPv6, ip.String())
+		}
+		step.Status, step.Reason, step.Data = StatusSkipped, "literal_ip", &data
+		return step
+	}
 	if resolver == nil {
 		resolver = net.DefaultResolver
 	}
@@ -397,6 +407,8 @@ func classifyError(err error, fallback string) string {
 		return "dns_not_found"
 	case errors.Is(err, syscall.ECONNREFUSED):
 		return "connection_refused"
+	case errors.Is(err, syscall.ECONNRESET), errors.Is(err, syscall.Errno(10054)):
+		return "connection_reset"
 	case errors.Is(err, syscall.Errno(10061)): // WSAECONNREFUSED
 		return "connection_refused"
 	case errors.Is(err, syscall.ENETUNREACH), errors.Is(err, syscall.EHOSTUNREACH):
