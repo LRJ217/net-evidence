@@ -19,7 +19,7 @@ export interface Evidence {
   started_at: string
   duration_ms: number
   target: { input: string; url: string; scheme: string; host: string; port: string; address: string }
-  dns: Step<{ ipv4: string[]; ipv6: string[] }>
+  dns: Step<{ ipv4: string[]; ipv6: string[]; address_kinds?: { private?: number; loopback?: number; link_local?: number; other?: number } }>
   tcp: Step<TCPData>
   tls: Step<{ protocol: string; cipher_suite: string; hostname_valid: boolean; time_valid: boolean; verified: boolean }>
   http: Step<{ status_code: number; final_url: string; hops: { url: string; status_code: number; duration_ms: number }[] }>

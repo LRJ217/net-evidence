@@ -53,6 +53,13 @@ func RenderIssue(report Report) []byte {
 	b.WriteString("\n## 关键事实\n\n")
 	if r.DNS.Data != nil {
 		fmt.Fprintf(&b, "- DNS 返回 IPv4 %d 个、IPv6 %d 个。\n", len(r.DNS.Data.IPv4), len(r.DNS.Data.IPv6))
+		if kinds := r.DNS.Data.AddressKinds; kinds != nil {
+			fmt.Fprintf(&b, "- 地址类型：私有 %d 个、回环 %d 个、链路本地 %d 个、其他 %d 个；“其他”不代表公网可达。\n",
+				kinds.Private, kinds.Loopback, kinds.LinkLocal, kinds.Other)
+		}
+	}
+	if r.TCP.Data != nil && len(r.TCP.Data.Attempts) > 0 {
+		fmt.Fprintf(&b, "- TCP 共探测 %d 个地址（每个地址族最多 3 个）。\n", len(r.TCP.Data.Attempts))
 	}
 	if r.TLS.Data != nil {
 		fmt.Fprintf(&b, "- TLS：证书域名匹配=%t，有效期通过=%t，信任验证通过=%t。\n", r.TLS.Data.HostnameValid, r.TLS.Data.TimeValid, r.TLS.Data.Verified)

@@ -67,10 +67,14 @@ func Analyze(r diagnostic.Result) []Finding {
 			add("tcp_failure", "TCP 连接失败", "连接失败的具体原因仍需结合本机和目标环境检查。", "tcp")
 		}
 	}
-	if d := r.TCP.Data; d != nil && len(d.Attempts) == 2 &&
-		!isAttemptCanceled(d.Attempts[0]) && !isAttemptCanceled(d.Attempts[1]) &&
-		(d.Attempts[0].Status != d.Attempts[1].Status || errorKind(d.Attempts[0].Error) != errorKind(d.Attempts[1].Error)) {
-		add("address_family_difference", "IPv4 与 IPv6 连接结果不同", "两个地址族各探测了首个解析地址，结果不同；不能据此断定整个地址族都不可用。", "dns", "tcp")
+	if d := r.TCP.Data; d != nil {
+		v4, v6 := summarizeAttempts(d.Attempts)
+		if v4.success && v4.failure || v6.success && v6.failure {
+			add("address_variation", "同一地址族的连接结果不同", "部分采样地址可连接，另一些失败；每个地址族最多探测 3 个地址，结果仅代表这些样本。", "dns", "tcp")
+		}
+		if v4.count > 0 && v6.count > 0 && (v4.success != v6.success || (!v4.success && v4.failureKind != v6.failureKind)) {
+			add("address_family_difference", "IPv4 与 IPv6 连接结果不同", "两个地址族的采样结果不同；每个地址族最多探测 3 个地址，不能据此断定整个地址族都不可用。", "dns", "tcp")
+		}
 	}
 	if r.TLS.Status == diagnostic.StatusFailure {
 		if errorKind(r.TLS.Error) == "canceled" {
@@ -145,8 +149,41 @@ func observedFailure(status diagnostic.Status, err *diagnostic.ProbeError) bool 
 	return status == diagnostic.StatusFailure && errorKind(err) != "canceled"
 }
 
-func isAttemptCanceled(attempt diagnostic.TCPAttempt) bool {
-	return errorKind(attempt.Error) == "canceled"
+type attemptSummary struct {
+	count       int
+	success     bool
+	failure     bool
+	failureKind string
+}
+
+func summarizeAttempts(attempts []diagnostic.TCPAttempt) (v4, v6 attemptSummary) {
+	for _, attempt := range attempts {
+		if errorKind(attempt.Error) == "canceled" {
+			continue
+		}
+		var summary *attemptSummary
+		switch attempt.Family {
+		case "IPv4":
+			summary = &v4
+		case "IPv6":
+			summary = &v6
+		default:
+			continue
+		}
+		summary.count++
+		if attempt.Status == diagnostic.StatusSuccess {
+			summary.success = true
+		} else if attempt.Status == diagnostic.StatusFailure {
+			kind := errorKind(attempt.Error)
+			if !summary.failure {
+				summary.failureKind = kind
+			} else if summary.failureKind != kind {
+				summary.failureKind = "mixed"
+			}
+			summary.failure = true
+		}
+	}
+	return v4, v6
 }
 
 func isLoopbackTarget(host string) bool {
@@ -162,6 +199,26 @@ func errorKind(err *diagnostic.ProbeError) string {
 		return ""
 	}
 	return err.Kind
+}
+
+func addressKinds(data *diagnostic.DNSData) *diagnostic.AddressKinds {
+	kinds := &diagnostic.AddressKinds{}
+	for _, value := range append(append([]string{}, data.IPv4...), data.IPv6...) {
+		ip := net.ParseIP(value)
+		switch {
+		case ip == nil:
+			kinds.Other++
+		case ip.IsLoopback():
+			kinds.Loopback++
+		case ip.IsLinkLocalUnicast():
+			kinds.LinkLocal++
+		case ip.IsPrivate():
+			kinds.Private++
+		default:
+			kinds.Other++
+		}
+	}
+	return kinds
 }
 
 func sanitize(r diagnostic.Result) diagnostic.Result {
@@ -199,7 +256,10 @@ func sanitize(r diagnostic.Result) diagnostic.Result {
 		out.ProxyHTTP = &step
 	}
 	if r.DNS.Data != nil {
-		out.DNS.Data = &diagnostic.DNSData{IPv4: maskList(r.DNS.Data.IPv4, "[IP_REDACTED]"), IPv6: maskList(r.DNS.Data.IPv6, "[IP_REDACTED]")}
+		out.DNS.Data = &diagnostic.DNSData{
+			IPv4: maskList(r.DNS.Data.IPv4, "[IP_REDACTED]"), IPv6: maskList(r.DNS.Data.IPv6, "[IP_REDACTED]"),
+			AddressKinds: addressKinds(r.DNS.Data),
+		}
 	}
 	if r.TCP.Data != nil {
 		data := &diagnostic.TCPData{Attempts: make([]diagnostic.TCPAttempt, 0, len(r.TCP.Data.Attempts))}

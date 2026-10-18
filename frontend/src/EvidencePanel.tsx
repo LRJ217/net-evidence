@@ -34,8 +34,21 @@ const proxyReason: Record<string, string> = {
 function factsFor(id: string, step: Step): string[] {
   const d = step.data as Record<string, unknown> | undefined
   if (!d) return step.reason ? [proxyReason[step.reason] ?? step.reason] : []
-  if (id === 'dns') return [...(step.reason === 'literal_ip' ? ['字面量 IP，无需域名解析'] : []), `IPv4：${(d.ipv4 as string[] | undefined)?.length ?? 0} 个`, `IPv6：${(d.ipv6 as string[] | undefined)?.length ?? 0} 个`]
-  if (id === 'tcp') return step.status === 'success' ? ['至少一个探测地址建立了连接'] : []
+  if (id === 'dns') {
+    const kinds = d.address_kinds as { private?: number; loopback?: number; link_local?: number; other?: number } | undefined
+    return [
+      ...(step.reason === 'literal_ip' ? ['字面量 IP，无需域名解析'] : []),
+      `IPv4：${(d.ipv4 as string[] | undefined)?.length ?? 0} 个`,
+      `IPv6：${(d.ipv6 as string[] | undefined)?.length ?? 0} 个`,
+      ...([['私有地址', kinds?.private], ['回环地址', kinds?.loopback], ['链路本地地址', kinds?.link_local], ['其他地址', kinds?.other]] as const)
+        .filter(([, count]) => count !== undefined && count > 0)
+        .map(([label, count]) => `${label}：${count} 个`),
+    ]
+  }
+  if (id === 'tcp') return [
+    ...(step.status === 'success' ? ['至少一个探测地址建立了连接'] : []),
+    ...((d.attempts as unknown[] | undefined)?.length ? [`已探测 ${(d.attempts as unknown[]).length} 个地址，每个地址族最多 3 个`] : []),
+  ]
   if (id === 'tls') return [
     `协议：${String(d.protocol ?? '未知')}`,
     `证书域名：${d.hostname_valid ? '匹配' : '未通过'}`,
@@ -75,7 +88,7 @@ export function EvidencePanel({ report, localTCP, busy, progress, selectedSummar
       const status = errorKind === 'canceled' ? 'canceled' : step?.status ?? 'pending'
       const details = report && step ? factsFor(layer.id, step as Step) : []
       if (layer.id === 'tcp' && localTCP?.attempts?.length) {
-        details.push(...localTCP.attempts.map(attempt => `${attempt.family} 首个地址 ${attempt.address}：${attempt.error?.kind === 'canceled' ? '已取消' : statusText[attempt.status]} · ${attempt.duration_ms} ms${attempt.error && attempt.error.kind !== 'canceled' ? ` (${attempt.error.kind})` : ''}`))
+        details.push(...localTCP.attempts.map(attempt => `${attempt.family} 地址 ${attempt.address}：${attempt.error?.kind === 'canceled' ? '已取消' : statusText[attempt.status]} · ${attempt.duration_ms} ms${attempt.error && attempt.error.kind !== 'canceled' ? ` (${attempt.error.kind})` : ''}`))
       }
       return <article className={`layer-card ${status}`} key={layer.id}>
         <div className="layer-top"><span className="layer-index">{String(index + 1).padStart(2, '0')}</span><span className={`status-pill ${status}`}>{statusText[status]}</span></div>

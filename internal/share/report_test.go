@@ -91,6 +91,12 @@ func TestSharedFormatsDoNotLeakRawEvidence(t *testing.T) {
 		report.Evidence.TCP.Data.Attempts[1].Address != "[ADDRESS_REDACTED]" {
 		t.Fatalf("per-family TCP evidence was not safely projected: %+v", report.Evidence.TCP.Data)
 	}
+	if kinds := report.Evidence.DNS.Data.AddressKinds; kinds == nil || kinds.Private != 2 || kinds.Other != 1 {
+		t.Fatalf("address categories were not retained safely: %+v", kinds)
+	}
+	if issue := string(RenderIssue(report)); !strings.Contains(issue, "地址类型：私有 2 个") || !strings.Contains(issue, "TCP 共探测 2 个地址") {
+		t.Fatalf("issue format omitted safe address evidence: %s", issue)
+	}
 }
 
 func TestAddressFamilyDifferenceFinding(t *testing.T) {
@@ -102,6 +108,29 @@ func TestAddressFamilyDifferenceFinding(t *testing.T) {
 	findings := Analyze(r)
 	if len(findings) != 1 || findings[0].ID != "address_family_difference" {
 		t.Fatalf("family difference was omitted: %+v", findings)
+	}
+}
+
+func TestAddressVariationFinding(t *testing.T) {
+	r := diagnostic.Result{TCP: diagnostic.Step[diagnostic.TCPData]{Status: diagnostic.StatusSuccess,
+		Data: &diagnostic.TCPData{Attempts: []diagnostic.TCPAttempt{
+			{Family: "IPv4", Status: diagnostic.StatusFailure, Error: &diagnostic.ProbeError{Kind: "connection_refused"}},
+			{Family: "IPv4", Status: diagnostic.StatusSuccess},
+			{Family: "IPv6", Status: diagnostic.StatusFailure, Error: &diagnostic.ProbeError{Kind: "network_unreachable"}},
+		}}}}
+	findings := Analyze(r)
+	if len(findings) != 2 || findings[0].ID != "address_variation" || findings[1].ID != "address_family_difference" {
+		t.Fatalf("mixed sampled address results were not explained: %+v", findings)
+	}
+}
+
+func TestAddressKindsIncludeLoopbackAndLinkLocal(t *testing.T) {
+	r := diagnostic.Result{DNS: diagnostic.Step[diagnostic.DNSData]{Data: &diagnostic.DNSData{
+		IPv4: []string{"127.0.0.1", "169.254.10.20"}, IPv6: []string{"::1", "fe80::1"},
+	}}}
+	kinds := Build(r).Evidence.DNS.Data.AddressKinds
+	if kinds == nil || kinds.Loopback != 2 || kinds.LinkLocal != 2 || kinds.Private != 0 || kinds.Other != 0 {
+		t.Fatalf("wrong safe address categories: %+v", kinds)
 	}
 }
 

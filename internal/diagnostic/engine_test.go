@@ -240,10 +240,36 @@ func TestHTTPUsesSuccessfulTCPAddress(t *testing.T) {
 	_, port, _ := net.SplitHostPort(server.Listener.Addr().String())
 	expectedHost = "probe.invalid:" + port
 	result, err := Run(context.Background(), "http://probe.invalid:"+port, Options{
-		Resolver: fixedResolver{addresses: []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}}},
+		Resolver: fixedResolver{addresses: []net.IPAddr{{IP: net.ParseIP("127.0.0.2")}, {IP: net.ParseIP("127.0.0.1")}, {IP: net.ParseIP("127.0.0.2")}}},
 	})
 	if err != nil || result.TCP.Status != StatusSuccess || result.HTTP.Status != StatusSuccess {
 		t.Fatalf("HTTP did not reuse the tested address: %+v %+v %v", result.TCP, result.HTTP, err)
+	}
+	if result.DNS.Data == nil || len(result.DNS.Data.IPv4) != 2 || result.DNS.Data.IPv4[0] != "127.0.0.2" ||
+		result.TCP.Data == nil || len(result.TCP.Data.Attempts) != 2 || result.TCP.Data.Attempts[0].Status != StatusFailure ||
+		result.TCP.Data.Attempts[1].Status != StatusSuccess || result.TCP.Data.ConnectedAddress != server.Listener.Addr().String() {
+		t.Fatalf("resolver order or alternate-address fallback was lost: %+v %+v", result.DNS, result.TCP)
+	}
+}
+
+func TestTCPSamplesAtMostThreeAddressesPerFamily(t *testing.T) {
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	_, port, _ := net.SplitHostPort(listener.Addr().String())
+	step := probeTCP(context.Background(), port, DNSData{IPv4: []string{
+		"127.0.0.2", "127.0.0.1", "127.0.0.3", "127.0.0.4",
+	}}, time.Second)
+	if step.Status != StatusSuccess || step.Data == nil || len(step.Data.Attempts) != 3 ||
+		step.Data.Attempts[1].Status != StatusSuccess || step.Data.ConnectedAddress != listener.Addr().String() {
+		t.Fatalf("wrong bounded address sample: %+v", step)
+	}
+	for _, attempt := range step.Data.Attempts {
+		if attempt.Address == net.JoinHostPort("127.0.0.4", port) {
+			t.Fatalf("fourth address should not be probed: %+v", step.Data.Attempts)
+		}
 	}
 }
 

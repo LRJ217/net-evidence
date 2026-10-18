@@ -32,8 +32,18 @@ type Step[T any] struct {
 }
 
 type DNSData struct {
-	IPv4 []string `json:"ipv4"`
-	IPv6 []string `json:"ipv6"`
+	IPv4         []string      `json:"ipv4"`
+	IPv6         []string      `json:"ipv6"`
+	AddressKinds *AddressKinds `json:"address_kinds,omitempty"`
+}
+
+// AddressKinds is a coarse summary for shared reports. "Other" does not
+// imply that an address is publicly reachable.
+type AddressKinds struct {
+	Private   int `json:"private,omitempty"`
+	Loopback  int `json:"loopback,omitempty"`
+	LinkLocal int `json:"link_local,omitempty"`
+	Other     int `json:"other,omitempty"`
 }
 
 type TCPData struct {

@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -139,10 +138,8 @@ func probeDNS(parent context.Context, host string, timeout time.Duration, resolv
 			data.IPv6 = append(data.IPv6, addr.IP.String())
 		}
 	}
-	sort.Strings(data.IPv4)
-	sort.Strings(data.IPv6)
-	data.IPv4 = compactStrings(data.IPv4)
-	data.IPv6 = compactStrings(data.IPv6)
+	data.IPv4 = uniqueStrings(data.IPv4)
+	data.IPv6 = uniqueStrings(data.IPv6)
 	step.Data = &data
 	if len(data.IPv4)+len(data.IPv6) == 0 {
 		step.Status = StatusFailure
@@ -153,21 +150,23 @@ func probeDNS(parent context.Context, host string, timeout time.Duration, resolv
 	return step
 }
 
-func compactStrings(values []string) []string {
-	if len(values) == 0 {
-		return values
-	}
-	out := values[:1]
-	for _, value := range values[1:] {
-		if value != out[len(out)-1] {
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	out := values[:0]
+	for _, value := range values {
+		if !seen[value] {
+			seen[value] = true
 			out = append(out, value)
 		}
 	}
 	return out
 }
 
-// probeTCP checks the first resolved address of each available family. The
-// attempts run concurrently under the same per-layer deadline.
+const maxTCPAddressesPerFamily = 3
+
+// probeTCP samples resolver-ordered addresses from each available family. All
+// attempts share one per-layer deadline, so additional addresses cannot make
+// this stage wait longer than its configured timeout.
 func probeTCP(parent context.Context, port string, dns DNSData, timeout time.Duration) Step[TCPData] {
 	step := Step[TCPData]{ID: "tcp"}
 	ctx, cancel := context.WithTimeout(parent, timeout)
@@ -175,15 +174,19 @@ func probeTCP(parent context.Context, port string, dns DNSData, timeout time.Dur
 	start := time.Now()
 	type candidate struct{ family, ip, network string }
 	candidates := []candidate{}
-	if len(dns.IPv4) > 0 {
-		candidates = append(candidates, candidate{"IPv4", dns.IPv4[0], "tcp4"})
+	for _, ip := range dns.IPv4[:min(len(dns.IPv4), maxTCPAddressesPerFamily)] {
+		candidates = append(candidates, candidate{"IPv4", ip, "tcp4"})
 	}
-	if len(dns.IPv6) > 0 {
-		candidates = append(candidates, candidate{"IPv6", dns.IPv6[0], "tcp6"})
+	for _, ip := range dns.IPv6[:min(len(dns.IPv6), maxTCPAddressesPerFamily)] {
+		candidates = append(candidates, candidate{"IPv6", ip, "tcp6"})
 	}
-	results := make(chan TCPAttempt, len(candidates))
-	for _, item := range candidates {
-		go func(item candidate) {
+	type indexedAttempt struct {
+		index   int
+		attempt TCPAttempt
+	}
+	results := make(chan indexedAttempt, len(candidates))
+	for index, item := range candidates {
+		go func(index int, item candidate) {
 			address := net.JoinHostPort(item.ip, port)
 			attemptStart := time.Now()
 			conn, err := (&net.Dialer{}).DialContext(ctx, item.network, address)
@@ -195,17 +198,13 @@ func probeTCP(parent context.Context, port string, dns DNSData, timeout time.Dur
 				attempt.Status = StatusSuccess
 				conn.Close()
 			}
-			results <- attempt
-		}(item)
+			results <- indexedAttempt{index, attempt}
+		}(index, item)
 	}
 	data := TCPData{Attempts: make([]TCPAttempt, len(candidates))}
 	for range candidates {
-		attempt := <-results
-		if attempt.Family == "IPv4" {
-			data.Attempts[0] = attempt
-		} else {
-			data.Attempts[len(candidates)-1] = attempt
-		}
+		result := <-results
+		data.Attempts[result.index] = result.attempt
 	}
 	step.DurationMs = time.Since(start).Milliseconds()
 	step.Data = &data
@@ -223,9 +222,11 @@ func probeTCP(parent context.Context, port string, dns DNSData, timeout time.Dur
 		step.Error = probeError(ctx.Err())
 	} else if len(data.Attempts) > 0 {
 		step.Error = data.Attempts[0].Error
-		if len(data.Attempts) == 2 && data.Attempts[0].Error != nil && data.Attempts[1].Error != nil &&
-			data.Attempts[0].Error.Kind != data.Attempts[1].Error.Kind {
-			step.Error = &ProbeError{Kind: "unknown", Message: "sampled IPv4 and IPv6 addresses failed differently"}
+		for _, attempt := range data.Attempts[1:] {
+			if attempt.Error == nil || step.Error == nil || attempt.Error.Kind != step.Error.Kind {
+				step.Error = &ProbeError{Kind: "unknown", Message: "sampled addresses failed differently"}
+				break
+			}
 		}
 	}
 	return step
