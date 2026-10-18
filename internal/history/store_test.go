@@ -77,6 +77,49 @@ func TestSaveListLoadAndCompare(t *testing.T) {
 	}
 }
 
+func TestHistoryPagesKeepOlderRecordsReachable(t *testing.T) {
+	store := Store{Dir: t.TempDir()}
+	for i := 0; i < 85; i++ {
+		if _, err := store.Save(sampleResult("http://127.0.0.1:8080/", diagnostic.StatusSuccess, 1)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(store.Dir, "broken.json"), []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	first, err := store.List()
+	if err != nil || len(first.Items) != historyPageSize || first.NextCursor == "" || first.InvalidFiles != 1 || first.TotalFiles != 86 {
+		t.Fatalf("first page: %+v %v", first, err)
+	}
+	if _, err := store.Save(sampleResult("http://127.0.0.1:8080/", diagnostic.StatusSuccess, 1)); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, item := range first.Items {
+		seen[item.ID] = true
+	}
+	cursor := first.NextCursor
+	for cursor != "" {
+		page, err := store.ListPage(cursor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range page.Items {
+			if seen[item.ID] {
+				t.Fatalf("duplicate paginated record: %s", item.ID)
+			}
+			seen[item.ID] = true
+		}
+		cursor = page.NextCursor
+	}
+	if len(seen) != 85 {
+		t.Fatalf("older records missing: got %d, want 85", len(seen))
+	}
+	if _, err := store.ListPage("../bad"); err == nil {
+		t.Fatal("accepted invalid history cursor")
+	}
+}
+
 func TestDeleteAndPruneHistory(t *testing.T) {
 	store := Store{Dir: t.TempDir()}
 	old, err := store.Save(sampleResult("http://127.0.0.1:8080/", diagnostic.StatusSuccess, 1))

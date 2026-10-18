@@ -17,6 +17,7 @@ import (
 )
 
 const maxRecordBytes = 2 << 20
+const historyPageSize = 40
 
 var validID = regexp.MustCompile(`^\d{8}T\d{6}\.\d{9}-[0-9a-f]{16}$`)
 
@@ -40,6 +41,7 @@ type Listing struct {
 	InvalidFiles int       `json:"invalid_files"`
 	TotalFiles   int       `json:"total_files"`
 	TotalBytes   int64     `json:"total_bytes"`
+	NextCursor   string    `json:"next_cursor,omitempty"`
 }
 
 type Store struct{ Dir string }
@@ -161,6 +163,16 @@ func (s Store) PruneOlderThan(cutoff time.Time) (int, error) {
 }
 
 func (s Store) List() (Listing, error) {
+	return s.ListPage("")
+}
+
+// ListPage reads records until one page of valid summaries is ready. The cursor is the ID of
+// the last valid record returned, so newly saved records do not shift older
+// pages while the user is browsing.
+func (s Store) ListPage(afterID string) (Listing, error) {
+	if afterID != "" && !validID.MatchString(afterID) {
+		return Listing{}, fmt.Errorf("invalid history cursor")
+	}
 	entries, err := os.ReadDir(s.Dir)
 	if os.IsNotExist(err) {
 		return Listing{Items: []Summary{}}, nil
@@ -176,15 +188,21 @@ func (s Store) List() (Listing, error) {
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(names)))
 	listing := Listing{Items: []Summary{}}
+	readableNames := make([]string, 0, len(names))
 	for _, name := range names {
 		info, err := os.Lstat(filepath.Join(s.Dir, name))
 		if err != nil {
-			listing.InvalidFiles++
+			if afterID == "" {
+				listing.InvalidFiles++
+			}
 			continue
 		}
 		listing.TotalFiles++
 		listing.TotalBytes += info.Size()
-		if len(listing.Items) >= 100 {
+		readableNames = append(readableNames, name)
+	}
+	for index, name := range readableNames {
+		if afterID != "" && name >= afterID+".json" {
 			continue
 		}
 		id := name[:len(name)-len(".json")]
@@ -194,6 +212,12 @@ func (s Store) List() (Listing, error) {
 			continue
 		}
 		listing.Items = append(listing.Items, summarize(record))
+		if len(listing.Items) == historyPageSize {
+			if index < len(readableNames)-1 {
+				listing.NextCursor = id
+			}
+			break
+		}
 	}
 	return listing, nil
 }

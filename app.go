@@ -52,6 +52,10 @@ func (a *App) CancelDiagnosis() bool { return a.service.Cancel() }
 
 func (a *App) ListHistory() (history.Listing, error) { return a.service.History() }
 
+func (a *App) ListHistoryPage(afterID string) (history.Listing, error) {
+	return a.service.HistoryPage(afterID)
+}
+
 func (a *App) DeleteHistory(id string) error { return a.service.DeleteHistory(id) }
 
 func (a *App) PruneHistory(days int) (int, error) { return a.service.PruneHistory(days) }

@@ -30,7 +30,7 @@ export interface Evidence {
 export interface Finding { id: string; title: string; explanation: string; evidence_ids: string[] }
 export interface Report { schema_version: number; privacy_note: string; evidence: Evidence; findings: Finding[] }
 export interface HistorySummary { id: string; saved_at: string; target: string; outcome: string; duration_ms: number }
-export interface HistoryListing { items: HistorySummary[]; invalid_files: number; total_files: number; total_bytes: number }
+export interface HistoryListing { items: HistorySummary[]; invalid_files: number; total_files: number; total_bytes: number; next_cursor?: string }
 export interface ProgressEvent { run_id: string; step: { id: string; status: Status; duration_ms: number } }
 export interface CompleteEvent {
   run_id: string
@@ -62,6 +62,7 @@ export interface DesktopBridge {
   StartDiagnosis(input: string, timeoutSeconds: number): Promise<string>
   CancelDiagnosis(): Promise<boolean>
   ListHistory(): Promise<HistoryListing>
+  ListHistoryPage(afterID: string): Promise<HistoryListing>
   DeleteHistory(id: string): Promise<void>
   PruneHistory(days: number): Promise<number>
   LocalTCP(id: string): Promise<TCPData | null>

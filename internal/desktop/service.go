@@ -139,6 +139,10 @@ func (s *Service) Shutdown() { s.Cancel() }
 
 func (s *Service) History() (history.Listing, error) { return s.store.List() }
 
+func (s *Service) HistoryPage(afterID string) (history.Listing, error) {
+	return s.store.ListPage(afterID)
+}
+
 func (s *Service) DeleteHistory(id string) error { return s.store.Delete(id) }
 
 func (s *Service) PruneHistory(days int) (int, error) {

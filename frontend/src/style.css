@@ -14,3 +14,4 @@
 .history-management{border-top:1px solid #26404e;padding:11px 8px 0;color:#8eabb7;font-size:11px}.history-controls{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:9px}.history-controls button,.history-controls select{background:#142d38;border:1px solid #31505d;border-radius:6px;color:#aecbd2;padding:6px;font-size:10px;min-width:0}.history-controls button:last-child{grid-column:1/-1}.history-controls button:not(:disabled):hover{background:#1c4050}
 .layer-card li{overflow-wrap:anywhere}
 .preview-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.history-load-more{width:100%;margin:8px 0 2px;padding:9px;border:1px solid #31505c;border-radius:8px;background:#142b36;color:#b8d5df;font-size:12px;cursor:pointer}.history-load-more:hover{border-color:#6cceba;color:#e7fff6}.history-load-more:disabled{opacity:.6;cursor:default}
