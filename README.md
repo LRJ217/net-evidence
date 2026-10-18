@@ -2,7 +2,7 @@
 
 Windows 本地网络故障证据工具。输入 URL、域名或 `host:port`，按 DNS、TCP、TLS、HTTP 和本机环境分层探测；将原始证据、带依据的“可能原因”和脱敏报告交给用户。
 
-> 阶段 3 已接入桌面诊断、逐层进度与取消、分层详情、报告预览、本机历史和两次诊断对比。
+> 桌面版已接入单次诊断、连续采样、四种网址入口对比、脱敏报告、本机历史和环境变化对比。
 
 ## 目标与技术
 
@@ -18,9 +18,12 @@ NetEvidence 解决“用户只说打不开、支持人员难以复现”的问�
 .\scripts\dev.ps1 -GoExe 'C:\path\to\go1.27.2\go\bin\go.exe' -Task check
 .\scripts\dev.ps1 -GoExe 'C:\path\to\go1.27.2\go\bin\go.exe' -Task test
 .\scripts\dev.ps1 -GoExe 'C:\path\to\go1.27.2\go\bin\go.exe' -Task build
+.\scripts\package.ps1 -GoExe 'C:\path\to\go1.27.2\go\bin\go.exe' -NSISBin 'D:\path\to\NSIS\Bin'
 ```
 
 若 `go` 已在 PATH 中，可省略 `-GoExe`。默认 `GOPROXY=https://goproxy.cn,direct`，可用 `-GoProxy` 覆盖。第一次构建需下载依赖。
+
+`package.ps1` 另需 NSIS，生成当前用户安装范围的 `build/bin/NetEvidence-amd64-installer.exe`，不要求管理员权限。安装包尚未签名，也未公开发布。
 
 ## 命令行诊断
 
@@ -47,7 +50,9 @@ NetEvidence 解决“用户只说打不开、支持人员难以复现”的问�
 
 历史记录保存在当前用户的 `%LOCALAPPDATA%\NetEvidence\history`，包含本机原始诊断数据，请按敏感文件管理。侧栏只展示脱敏摘要、文件数和占用空间；打开历史会重新生成脱敏报告。历史按每页 40 条加载，可继续查看更早记录；文件数和占用空间统计全部 JSON 文件。用户可删除当前记录，或按 30、90、180 天保留期限手动清理旧记录，操作前会确认；程序不会自动删除。对比页可选择已加载的两次诊断，查看各层状态与耗时变化。已加载页面中的损坏历史会跳过并提示，也不会被期限清理删除。桌面导出仅提供脱敏格式；在系统保存对话框确认替换后可覆盖已有文件。CLI 的 `-out` 仍只创建新文件。
 
-各阶段的实现边界及测试证据见 [探测验证](docs/verification-stage1.md)、[分享验证](docs/verification-stage2.md) 与 [桌面验证](docs/verification-stage3.md)。
+“连续采样”按 10/30/60 秒间隔持续 5/10/30 分钟，展示成功率、首次异常和故障层，只保留异常与首个成功样本到本机历史；“网址入口对比”并行检查主域名和 `www` 的 HTTP/HTTPS 首页，输入路径和查询不会带入四个请求。历史对比还显示代理、网卡及 DNS 答案是否变化，不输出这些配置的原始值。完整操作见 [使用说明](docs/user-guide.md)，可重复的四入口命令行检查见 `scripts/verify-site.ps1`。
+
+各阶段的实现边界及测试证据见 [探测验证](docs/verification-stage1.md)、[分享验证](docs/verification-stage2.md)、[桌面验证](docs/verification-stage3.md) 与 [交付验证](docs/verification-stage4.md)。
 
 ## 阶段
 

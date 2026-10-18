@@ -62,9 +62,18 @@ func (s *Service) Start(input string, timeoutSeconds int) (string, error) {
 	if timeoutSeconds < 5 || timeoutSeconds > 60 {
 		return "", fmt.Errorf("timeout must be between 5 and 60 seconds")
 	}
+	id, ctx, err := s.begin()
+	if err != nil {
+		return "", err
+	}
+	go s.execute(ctx, id, input, time.Duration(timeoutSeconds)*time.Second)
+	return id, nil
+}
+
+func (s *Service) begin() (string, context.Context, error) {
 	var random [8]byte
 	if _, err := rand.Read(random[:]); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	id := hex.EncodeToString(random[:])
 	ctx, cancel := context.WithCancel(context.Background())
@@ -72,12 +81,11 @@ func (s *Service) Start(input string, timeoutSeconds int) (string, error) {
 	if s.active != nil {
 		s.mu.Unlock()
 		cancel()
-		return "", ErrBusy
+		return "", nil, ErrBusy
 	}
 	s.active = &activeRun{id: id, cancel: cancel}
 	s.mu.Unlock()
-	go s.execute(ctx, id, input, time.Duration(timeoutSeconds)*time.Second)
-	return id, nil
+	return id, ctx, nil
 }
 
 func (s *Service) execute(ctx context.Context, id, input string, timeout time.Duration) {

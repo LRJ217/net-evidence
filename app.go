@@ -48,6 +48,14 @@ func (a *App) StartDiagnosis(input string, timeoutSeconds int) (string, error) {
 	return a.service.Start(input, timeoutSeconds)
 }
 
+func (a *App) StartObservation(input string, timeoutSeconds, intervalSeconds, durationMinutes int) (string, error) {
+	return a.service.StartObservation(input, timeoutSeconds, intervalSeconds, durationMinutes)
+}
+
+func (a *App) StartVariants(input string, timeoutSeconds int) (string, error) {
+	return a.service.StartVariants(input, timeoutSeconds)
+}
+
 func (a *App) CancelDiagnosis() bool { return a.service.Cancel() }
 
 func (a *App) ListHistory() (history.Listing, error) { return a.service.History() }

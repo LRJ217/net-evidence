@@ -224,6 +224,15 @@ func (s Store) ListPage(afterID string) (Listing, error) {
 
 func summarize(record Record) Summary {
 	r := record.Result
+	return Summary{
+		ID: record.ID, SavedAt: record.SavedAt,
+		Target:  share.Build(r).Evidence.Target.URL,
+		Outcome: Outcome(r), DurationMs: r.DurationMs,
+	}
+}
+
+// Outcome returns a fixed category without exposing raw diagnostic data.
+func Outcome(r diagnostic.Result) string {
 	outcome := "partial"
 	switch {
 	case isCanceled(r.DNS.Error) || isCanceled(r.TCP.Error) || isCanceled(r.TLS.Error) || isCanceled(r.HTTP.Error) ||
@@ -243,11 +252,7 @@ func summarize(record Record) Summary {
 	case r.HTTP.Status == diagnostic.StatusSuccess:
 		outcome = "success"
 	}
-	return Summary{
-		ID: record.ID, SavedAt: record.SavedAt,
-		Target:  share.Build(r).Evidence.Target.URL,
-		Outcome: outcome, DurationMs: r.DurationMs,
-	}
+	return outcome
 }
 
 func isCanceled(err *diagnostic.ProbeError) bool { return err != nil && err.Kind == "canceled" }

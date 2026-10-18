@@ -41,6 +41,39 @@ export interface CompleteEvent {
   history_error?: string
   error?: string
 }
+export interface ObservationSample {
+  run_id: string
+  number: number
+  started_at: string
+  outcome: string
+  failure_layer?: string
+  duration_ms: number
+  saved?: HistorySummary
+  history_error?: boolean
+}
+export interface ObservationComplete {
+  run_id: string
+  samples: number
+  successes: number
+  failures: number
+  history_errors: number
+  cancelled: boolean
+  error?: string
+}
+export interface VariantResult {
+  run_id: string
+  url: string
+  outcome: string
+  dns: Status
+  tcp: Status
+  tls: Status
+  http: Status
+  http_code: number
+  final_url?: string
+  failure_layer?: string
+  duration_ms: number
+}
+export interface VariantsComplete { run_id: string; cancelled: boolean }
 export interface ComparisonRow {
   id: string
   left_status: Status
@@ -56,10 +89,23 @@ export interface Comparison {
   rows: ComparisonRow[]
   left_http_status: number
   right_http_status: number
+  environment: {
+    available: boolean
+    proxy_enabled_changed: boolean
+    proxy_server_changed: boolean
+    proxy_bypass_changed: boolean
+    pac_changed: boolean
+    env_proxy_presence_changed: boolean
+    network_interfaces_changed: boolean
+    dns_answers_available: boolean
+    dns_answers_changed: boolean
+  }
 }
 
 export interface DesktopBridge {
   StartDiagnosis(input: string, timeoutSeconds: number): Promise<string>
+  StartObservation(input: string, timeoutSeconds: number, intervalSeconds: number, durationMinutes: number): Promise<string>
+  StartVariants(input: string, timeoutSeconds: number): Promise<string>
   CancelDiagnosis(): Promise<boolean>
   ListHistory(): Promise<HistoryListing>
   ListHistoryPage(afterID: string): Promise<HistoryListing>

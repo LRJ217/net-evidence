@@ -1,6 +1,10 @@
 package history
 
-import "github.com/LRJ217/net-evidence/internal/diagnostic"
+import (
+	"slices"
+
+	"github.com/LRJ217/net-evidence/internal/diagnostic"
+)
 
 type ComparisonRow struct {
 	ID              string            `json:"id"`
@@ -18,6 +22,20 @@ type Comparison struct {
 	Rows            []ComparisonRow `json:"rows"`
 	LeftHTTPStatus  int             `json:"left_http_status"`
 	RightHTTPStatus int             `json:"right_http_status"`
+	Environment     EnvironmentDiff `json:"environment"`
+}
+
+// EnvironmentDiff exposes only whether sensitive local settings changed.
+type EnvironmentDiff struct {
+	Available                bool `json:"available"`
+	ProxyEnabledChanged      bool `json:"proxy_enabled_changed"`
+	ProxyServerChanged       bool `json:"proxy_server_changed"`
+	ProxyBypassChanged       bool `json:"proxy_bypass_changed"`
+	PACChanged               bool `json:"pac_changed"`
+	EnvProxyPresenceChanged  bool `json:"env_proxy_presence_changed"`
+	NetworkInterfacesChanged bool `json:"network_interfaces_changed"`
+	DNSAnswersAvailable      bool `json:"dns_answers_available"`
+	DNSAnswersChanged        bool `json:"dns_answers_changed"`
 }
 
 func Compare(left, right Record) Comparison {
@@ -39,7 +57,8 @@ func Compare(left, right Record) Comparison {
 		}
 		rows = append(rows, comparisonRow("proxy_http", leftProxy.Status, rightProxy.Status, leftProxy.DurationMs, rightProxy.DurationMs))
 	}
-	result := Comparison{Left: summarize(left), Right: summarize(right), Rows: rows}
+	result := Comparison{Left: summarize(left), Right: summarize(right), Rows: rows,
+		Environment: compareEnvironment(left.Result, right.Result)}
 	if left.Result.HTTP.Data != nil {
 		result.LeftHTTPStatus = left.Result.HTTP.Data.StatusCode
 	}
@@ -47,6 +66,46 @@ func Compare(left, right Record) Comparison {
 		result.RightHTTPStatus = right.Result.HTTP.Data.StatusCode
 	}
 	return result
+}
+
+func compareEnvironment(left, right diagnostic.Result) EnvironmentDiff {
+	diff := EnvironmentDiff{}
+	if a, b := left.Environment.Data, right.Environment.Data; a != nil && b != nil {
+		diff.Available = true
+		diff.ProxyEnabledChanged = a.Proxy.Enabled != b.Proxy.Enabled
+		diff.ProxyServerChanged = a.Proxy.Server != b.Proxy.Server
+		diff.ProxyBypassChanged = a.Proxy.BypassList != b.Proxy.BypassList
+		diff.PACChanged = a.Proxy.AutoConfigURL != b.Proxy.AutoConfigURL
+		diff.EnvProxyPresenceChanged = a.Proxy.EnvPresent != b.Proxy.EnvPresent
+		diff.NetworkInterfacesChanged = !slices.Equal(interfaceKeys(a.Interfaces), interfaceKeys(b.Interfaces))
+	}
+	if a, b := left.DNS.Data, right.DNS.Data; a != nil && b != nil && left.Target.Host == right.Target.Host {
+		diff.DNSAnswersAvailable = true
+		diff.DNSAnswersChanged = !slices.Equal(sortedCopy(append(append([]string{}, a.IPv4...), a.IPv6...)),
+			sortedCopy(append(append([]string{}, b.IPv4...), b.IPv6...)))
+	}
+	return diff
+}
+
+func interfaceKeys(items []diagnostic.InterfaceData) []string {
+	keys := make([]string, 0, len(items))
+	for _, item := range items {
+		keys = append(keys, item.Name+"\x00"+item.MAC+"\x00"+joinSorted(item.Addresses))
+	}
+	return sortedCopy(keys)
+}
+
+func joinSorted(values []string) string {
+	values = sortedCopy(values)
+	result := ""
+	for _, value := range values {
+		result += "\x00" + value
+	}
+	return result
+}
+
+func sortedCopy(values []string) []string {
+	return slices.Sorted(slices.Values(values))
 }
 
 func comparisonRow(id string, left, right diagnostic.Status, leftMs, rightMs int64) ComparisonRow {
