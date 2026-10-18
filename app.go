@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/LRJ217/net-evidence/internal/desktop"
+	"github.com/LRJ217/net-evidence/internal/diagnostic"
 	"github.com/LRJ217/net-evidence/internal/history"
 	"github.com/LRJ217/net-evidence/internal/share"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -47,6 +48,12 @@ func (a *App) StartDiagnosis(input string, timeoutSeconds int) (string, error) {
 func (a *App) CancelDiagnosis() bool { return a.service.Cancel() }
 
 func (a *App) ListHistory() (history.Listing, error) { return a.service.History() }
+
+func (a *App) DeleteHistory(id string) error { return a.service.DeleteHistory(id) }
+
+func (a *App) PruneHistory(days int) (int, error) { return a.service.PruneHistory(days) }
+
+func (a *App) LocalTCP(id string) (*diagnostic.TCPData, error) { return a.service.LocalTCP(id) }
 
 func (a *App) LoadReport(id string) (share.Report, error) { return a.service.Report(id) }
 

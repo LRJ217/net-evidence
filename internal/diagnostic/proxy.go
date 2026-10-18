@@ -21,7 +21,7 @@ func probeProxyHTTP(ctx context.Context, target Target, options Options, config 
 		step.Status, step.Reason = StatusSkipped, reason
 		return step
 	}
-	return requestHTTP(ctx, target, options, proxyURL, options.ProxyTimeout, "proxy_http", "system_proxy")
+	return requestHTTP(ctx, target, options, proxyURL, options.ProxyTimeout, "proxy_http", "system_proxy", "")
 }
 
 func manualProxyURL(config ProxyData, targetScheme string) (*url.URL, string) {

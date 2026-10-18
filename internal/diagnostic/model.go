@@ -37,7 +37,16 @@ type DNSData struct {
 }
 
 type TCPData struct {
-	ConnectedAddress string `json:"connected_address"`
+	ConnectedAddress string       `json:"connected_address,omitempty"`
+	Attempts         []TCPAttempt `json:"attempts,omitempty"`
+}
+
+type TCPAttempt struct {
+	Family     string      `json:"family"`
+	Address    string      `json:"address"`
+	Status     Status      `json:"status"`
+	DurationMs int64       `json:"duration_ms"`
+	Error      *ProbeError `json:"error,omitempty"`
 }
 
 type CertificateData struct {

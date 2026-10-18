@@ -69,7 +69,7 @@ func Run(ctx context.Context, input string, options Options) (result Result, err
 		return result, nil
 	}
 
-	result.TCP = probeTCP(ctx, target.Address, options.TCPTimeout)
+	result.TCP = probeTCP(ctx, target.Port, *result.DNS.Data, options.TCPTimeout)
 	progress(options, "tcp", result.TCP.Status, result.TCP.DurationMs)
 	if result.TCP.Status != StatusSuccess {
 		result.TLS = skipped[TLSData]("tls", "TCP connection failed")
@@ -80,7 +80,7 @@ func Run(ctx context.Context, input string, options Options) (result Result, err
 	}
 
 	if target.Scheme == "https" {
-		result.TLS = probeTLS(ctx, target, options)
+		result.TLS = probeTLS(ctx, target, result.TCP.Data.ConnectedAddress, options)
 		progress(options, "tls", result.TLS.Status, result.TLS.DurationMs)
 		if result.TLS.Status != StatusSuccess {
 			result.HTTP = skipped[HTTPData]("http", "TLS verification or handshake failed")
@@ -91,7 +91,7 @@ func Run(ctx context.Context, input string, options Options) (result Result, err
 		result.TLS = skipped[TLSData]("tls", "HTTP target does not use TLS")
 		progress(options, "tls", result.TLS.Status, 0)
 	}
-	result.HTTP = probeHTTP(ctx, target, options)
+	result.HTTP = probeHTTP(ctx, target, result.TCP.Data.ConnectedAddress, options)
 	progress(options, "http", result.HTTP.Status, result.HTTP.DurationMs)
 	return result, nil
 }
@@ -156,30 +156,77 @@ func compactStrings(values []string) []string {
 	return out
 }
 
-func probeTCP(parent context.Context, address string, timeout time.Duration) Step[TCPData] {
+// probeTCP checks the first resolved address of each available family. The
+// attempts run concurrently under the same per-layer deadline.
+func probeTCP(parent context.Context, port string, dns DNSData, timeout time.Duration) Step[TCPData] {
 	step := Step[TCPData]{ID: "tcp"}
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	start := time.Now()
-	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", address)
-	step.DurationMs = time.Since(start).Milliseconds()
-	if err != nil {
-		step.Status = StatusFailure
-		step.Error = probeError(err)
-		return step
+	type candidate struct{ family, ip, network string }
+	candidates := []candidate{}
+	if len(dns.IPv4) > 0 {
+		candidates = append(candidates, candidate{"IPv4", dns.IPv4[0], "tcp4"})
 	}
-	defer conn.Close()
-	step.Status = StatusSuccess
-	step.Data = &TCPData{ConnectedAddress: conn.RemoteAddr().String()}
+	if len(dns.IPv6) > 0 {
+		candidates = append(candidates, candidate{"IPv6", dns.IPv6[0], "tcp6"})
+	}
+	results := make(chan TCPAttempt, len(candidates))
+	for _, item := range candidates {
+		go func(item candidate) {
+			address := net.JoinHostPort(item.ip, port)
+			attemptStart := time.Now()
+			conn, err := (&net.Dialer{}).DialContext(ctx, item.network, address)
+			attempt := TCPAttempt{Family: item.family, Address: address, DurationMs: time.Since(attemptStart).Milliseconds()}
+			if err != nil {
+				attempt.Status = StatusFailure
+				attempt.Error = probeError(err)
+			} else {
+				attempt.Status = StatusSuccess
+				conn.Close()
+			}
+			results <- attempt
+		}(item)
+	}
+	data := TCPData{Attempts: make([]TCPAttempt, len(candidates))}
+	for range candidates {
+		attempt := <-results
+		if attempt.Family == "IPv4" {
+			data.Attempts[0] = attempt
+		} else {
+			data.Attempts[len(candidates)-1] = attempt
+		}
+	}
+	step.DurationMs = time.Since(start).Milliseconds()
+	step.Data = &data
+	for _, attempt := range data.Attempts {
+		if attempt.Status == StatusSuccess {
+			step.Status = StatusSuccess
+			data.ConnectedAddress = attempt.Address
+			return step
+		}
+	}
+	step.Status = StatusFailure
+	if parent.Err() != nil {
+		step.Error = probeError(parent.Err())
+	} else if ctx.Err() != nil {
+		step.Error = probeError(ctx.Err())
+	} else if len(data.Attempts) > 0 {
+		step.Error = data.Attempts[0].Error
+		if len(data.Attempts) == 2 && data.Attempts[0].Error != nil && data.Attempts[1].Error != nil &&
+			data.Attempts[0].Error.Kind != data.Attempts[1].Error.Kind {
+			step.Error = &ProbeError{Kind: "unknown", Message: "sampled IPv4 and IPv6 addresses failed differently"}
+		}
+	}
 	return step
 }
 
-func probeTLS(parent context.Context, target Target, options Options) Step[TLSData] {
+func probeTLS(parent context.Context, target Target, connectedAddress string, options Options) Step[TLSData] {
 	step := Step[TLSData]{ID: "tls"}
 	ctx, cancel := context.WithTimeout(parent, options.TLSTimeout)
 	defer cancel()
 	start := time.Now()
-	raw, err := (&net.Dialer{}).DialContext(ctx, "tcp", target.Address)
+	raw, err := (&net.Dialer{}).DialContext(ctx, "tcp", connectedAddress)
 	if err != nil {
 		step.Status = StatusFailure
 		step.DurationMs = time.Since(start).Milliseconds()
@@ -267,11 +314,11 @@ func (transport captureTransport) RoundTrip(request *http.Request) (*http.Respon
 	return response, err
 }
 
-func probeHTTP(parent context.Context, target Target, options Options) Step[HTTPData] {
-	return requestHTTP(parent, target, options, nil, options.HTTPTimeout, "http", "direct")
+func probeHTTP(parent context.Context, target Target, connectedAddress string, options Options) Step[HTTPData] {
+	return requestHTTP(parent, target, options, nil, options.HTTPTimeout, "http", "direct", connectedAddress)
 }
 
-func requestHTTP(parent context.Context, target Target, options Options, proxyURL *url.URL, timeout time.Duration, id, transport string) Step[HTTPData] {
+func requestHTTP(parent context.Context, target Target, options Options, proxyURL *url.URL, timeout time.Duration, id, transport, connectedAddress string) Step[HTTPData] {
 	step := Step[HTTPData]{ID: id}
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
@@ -286,6 +333,15 @@ func requestHTTP(parent context.Context, target Target, options Options, proxyUR
 		DisableKeepAlives:     true,
 		ResponseHeaderTimeout: timeout,
 		TLSClientConfig:       &tls.Config{RootCAs: options.RootCAs},
+	}
+	if proxyURL == nil && connectedAddress != "" {
+		dialer := &net.Dialer{}
+		base.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+			if strings.EqualFold(address, target.Address) {
+				return dialer.DialContext(ctx, "tcp", connectedAddress)
+			}
+			return dialer.DialContext(ctx, network, address)
+		}
 	}
 	defer base.CloseIdleConnections()
 	client := &http.Client{

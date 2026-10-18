@@ -25,12 +25,13 @@ type ProgressEvent struct {
 }
 
 type CompleteEvent struct {
-	RunID        string           `json:"run_id"`
-	Summary      *history.Summary `json:"summary,omitempty"`
-	Report       *share.Report    `json:"report,omitempty"`
-	Cancelled    bool             `json:"cancelled"`
-	HistoryError string           `json:"history_error,omitempty"`
-	Error        string           `json:"error,omitempty"`
+	RunID        string              `json:"run_id"`
+	Summary      *history.Summary    `json:"summary,omitempty"`
+	Report       *share.Report       `json:"report,omitempty"`
+	TCP          *diagnostic.TCPData `json:"tcp,omitempty"`
+	Cancelled    bool                `json:"cancelled"`
+	HistoryError string              `json:"history_error,omitempty"`
+	Error        string              `json:"error,omitempty"`
 }
 
 type activeRun struct {
@@ -97,6 +98,7 @@ func (s *Service) execute(ctx context.Context, id, input string, timeout time.Du
 	}
 	report := share.Build(result)
 	event.Report = &report
+	event.TCP = result.TCP.Data
 	summary, saveErr := s.store.Save(result)
 	if saveErr != nil {
 		event.HistoryError = saveErr.Error()
@@ -136,6 +138,23 @@ func (s *Service) Cancel() bool {
 func (s *Service) Shutdown() { s.Cancel() }
 
 func (s *Service) History() (history.Listing, error) { return s.store.List() }
+
+func (s *Service) DeleteHistory(id string) error { return s.store.Delete(id) }
+
+func (s *Service) PruneHistory(days int) (int, error) {
+	if days != 30 && days != 90 && days != 180 {
+		return 0, fmt.Errorf("unsupported retention period")
+	}
+	return s.store.PruneOlderThan(time.Now().AddDate(0, 0, -days))
+}
+
+func (s *Service) LocalTCP(id string) (*diagnostic.TCPData, error) {
+	record, err := s.store.Load(id)
+	if err != nil {
+		return nil, err
+	}
+	return record.Result.TCP.Data, nil
+}
 
 func (s *Service) Report(id string) (share.Report, error) {
 	record, err := s.store.Load(id)

@@ -1,6 +1,7 @@
 package history
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,6 +44,9 @@ func TestSaveListLoadAndCompare(t *testing.T) {
 	if len(listing.Items) != 2 || listing.Items[0].ID != right.ID || listing.Items[1].ID != left.ID {
 		t.Fatalf("wrong history order: %+v", listing)
 	}
+	if listing.TotalFiles != 2 || listing.TotalBytes <= 0 {
+		t.Fatalf("history usage was not counted: %+v", listing)
+	}
 	leftRecord, err := store.Load(left.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -70,6 +74,58 @@ func TestSaveListLoadAndCompare(t *testing.T) {
 	}
 	if _, err := store.Load("../other"); err == nil {
 		t.Fatal("accepted path traversal ID")
+	}
+}
+
+func TestDeleteAndPruneHistory(t *testing.T) {
+	store := Store{Dir: t.TempDir()}
+	old, err := store.Save(sampleResult("http://127.0.0.1:8080/", diagnostic.StatusSuccess, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := store.Save(sampleResult("http://127.0.0.1:8080/", diagnostic.StatusSuccess, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldPath := filepath.Join(store.Dir, old.ID+".json")
+	data, err := os.ReadFile(oldPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var record Record
+	if err := json.Unmarshal(data, &record); err != nil {
+		t.Fatal(err)
+	}
+	record.SavedAt = time.Now().AddDate(0, 0, -100)
+	data, err = json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(oldPath, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(store.Dir, "broken.json"), []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := store.PruneOlderThan(time.Now().AddDate(0, 0, -90))
+	if err != nil || removed != 1 {
+		t.Fatalf("wrong prune result: %d %v", removed, err)
+	}
+	if _, err := store.Load(old.ID); !os.IsNotExist(err) {
+		t.Fatalf("old record survived pruning: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(store.Dir, "broken.json")); err != nil {
+		t.Fatalf("invalid file was removed: %v", err)
+	}
+	if err := store.Delete("../other"); err == nil {
+		t.Fatal("delete accepted a traversal ID")
+	}
+	if err := store.Delete(current.ID); err != nil {
+		t.Fatal(err)
+	}
+	listing, err := store.List()
+	if err != nil || listing.TotalFiles != 1 || listing.InvalidFiles != 1 {
+		t.Fatalf("wrong remaining history: %+v %v", listing, err)
 	}
 }
 

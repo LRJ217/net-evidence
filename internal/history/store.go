@@ -38,6 +38,8 @@ type Summary struct {
 type Listing struct {
 	Items        []Summary `json:"items"`
 	InvalidFiles int       `json:"invalid_files"`
+	TotalFiles   int       `json:"total_files"`
+	TotalBytes   int64     `json:"total_bytes"`
 }
 
 type Store struct{ Dir string }
@@ -121,6 +123,43 @@ func (s Store) Load(id string) (Record, error) {
 	return record, nil
 }
 
+func (s Store) Delete(id string) error {
+	if !validID.MatchString(id) {
+		return fmt.Errorf("invalid history ID")
+	}
+	return os.Remove(filepath.Join(s.Dir, id+".json"))
+}
+
+// PruneOlderThan removes valid diagnosis records older than the cutoff.
+func (s Store) PruneOlderThan(cutoff time.Time) (int, error) {
+	entries, err := os.ReadDir(s.Dir)
+	if os.IsNotExist(err) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	removed := 0
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		id := entry.Name()[:len(entry.Name())-len(".json")]
+		if !validID.MatchString(id) {
+			continue
+		}
+		record, err := s.Load(id)
+		if err != nil || !record.SavedAt.Before(cutoff) {
+			continue
+		}
+		if err := s.Delete(id); err != nil {
+			return removed, err
+		}
+		removed++
+	}
+	return removed, nil
+}
+
 func (s Store) List() (Listing, error) {
 	entries, err := os.ReadDir(s.Dir)
 	if os.IsNotExist(err) {
@@ -138,8 +177,15 @@ func (s Store) List() (Listing, error) {
 	sort.Sort(sort.Reverse(sort.StringSlice(names)))
 	listing := Listing{Items: []Summary{}}
 	for _, name := range names {
+		info, err := os.Lstat(filepath.Join(s.Dir, name))
+		if err != nil {
+			listing.InvalidFiles++
+			continue
+		}
+		listing.TotalFiles++
+		listing.TotalBytes += info.Size()
 		if len(listing.Items) >= 100 {
-			break
+			continue
 		}
 		id := name[:len(name)-len(".json")]
 		record, err := s.Load(id)

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { Evidence, Format, HistorySummary, Report, Status, Step } from './types'
+import type { Evidence, Format, HistorySummary, Report, Status, Step, TCPData } from './types'
 
 export const layers = [
   { id: 'dns', label: 'DNS', subtitle: '解析目标地址' },
@@ -10,8 +10,8 @@ export const layers = [
   { id: 'proxy_http', label: '代理访问', subtitle: '经系统手动代理请求' },
 ] as const
 
-export const statusText: Record<Status | 'pending', string> = {
-  success: '通过', failure: '失败', partial: '部分完成', skipped: '跳过', pending: '等待中',
+export const statusText: Record<Status | 'pending' | 'canceled', string> = {
+  success: '通过', failure: '失败', partial: '部分完成', skipped: '跳过', pending: '等待中', canceled: '已取消',
 }
 const outcomeText: Record<string, string> = { success: '直连可访问', failure: '有故障', attention: '需关注', partial: '未完成', proxy_accessible: '代理可访问', proxy_failure: '代理路径失败' }
 const formatText: Record<Format, string> = { json: 'JSON', html: 'HTML', issue: 'Issue Markdown' }
@@ -34,7 +34,7 @@ function factsFor(id: string, step: Step): string[] {
   const d = step.data as Record<string, unknown> | undefined
   if (!d) return step.reason ? [proxyReason[step.reason] ?? step.reason] : []
   if (id === 'dns') return [`IPv4：${(d.ipv4 as string[] | undefined)?.length ?? 0} 个`, `IPv6：${(d.ipv6 as string[] | undefined)?.length ?? 0} 个`]
-  if (id === 'tcp') return ['目标端口已建立连接']
+  if (id === 'tcp') return step.status === 'success' ? ['至少一个探测地址建立了连接'] : []
   if (id === 'tls') return [
     `协议：${String(d.protocol ?? '未知')}`,
     `证书域名：${d.hostname_valid ? '匹配' : '未通过'}`,
@@ -51,6 +51,7 @@ function factsFor(id: string, step: Step): string[] {
 
 interface Props {
   report: Report | null
+  localTCP: TCPData | null
   busy: boolean
   progress: Record<string, { status: Status; duration_ms: number }>
   selectedSummary?: HistorySummary
@@ -61,22 +62,26 @@ interface Props {
   onExport: () => void
 }
 
-export function EvidencePanel({ report, busy, progress, selectedSummary, selectedId, format, preview, onFormat, onExport }: Props) {
+export function EvidencePanel({ report, localTCP, busy, progress, selectedSummary, selectedId, format, preview, onFormat, onExport }: Props) {
   const [selectedLayer, setSelectedLayer] = useState<string>('dns')
   const finished = Object.keys(progress).length
   return <>
     <div className="section-heading"><div><div className="eyebrow small">LIVE EVIDENCE</div><h2>分层证据</h2></div><span className="section-meta">{busy ? `已完成 ${finished} / ${layers.length} 层` : report ? `耗时 ${report.evidence.duration_ms} ms` : '等待开始'}</span></div>
     <div className="layer-grid">{layers.map((layer, index) => {
       const step = report ? evidenceStep(report.evidence, layer.id) : progress[layer.id]
-      const status = step?.status ?? 'pending'
-      const details = report && step ? factsFor(layer.id, step as Step) : []
       const errorKind = report && step ? (step as Step).error?.kind : undefined
+      const status = errorKind === 'canceled' ? 'canceled' : step?.status ?? 'pending'
+      const details = report && step ? factsFor(layer.id, step as Step) : []
+      if (layer.id === 'tcp' && localTCP?.attempts?.length) {
+        details.push(...localTCP.attempts.map(attempt => `${attempt.family} 首个地址 ${attempt.address}：${attempt.error?.kind === 'canceled' ? '已取消' : statusText[attempt.status]} · ${attempt.duration_ms} ms${attempt.error && attempt.error.kind !== 'canceled' ? ` (${attempt.error.kind})` : ''}`))
+      }
       return <article className={`layer-card ${status}`} key={layer.id}>
         <div className="layer-top"><span className="layer-index">{String(index + 1).padStart(2, '0')}</span><span className={`status-pill ${status}`}>{statusText[status]}</span></div>
         <h3>{layer.label}</h3><p>{layer.subtitle}</p>
         {step && <div className="layer-duration">{step.duration_ms} ms</div>}
         {details.length > 0 && <ul>{details.map((fact, i) => <li key={i}>{fact}</li>)}</ul>}
-        {errorKind && <div className="error-kind">{errorKind}</div>}
+        {errorKind && errorKind !== 'canceled' && <div className="error-kind">{errorKind}</div>}
+        {layer.id === 'tcp' && localTCP?.attempts?.length ? <div className="local-only">IP 仅在本机显示，分享报告会隐藏</div> : null}
       </article>
     })}</div>
     {report ? <>

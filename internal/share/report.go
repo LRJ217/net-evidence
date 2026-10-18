@@ -65,6 +65,11 @@ func Analyze(r diagnostic.Result) []Finding {
 			add("tcp_failure", "TCP 连接失败", "连接失败的具体原因仍需结合本机和目标环境检查。", "tcp")
 		}
 	}
+	if d := r.TCP.Data; d != nil && len(d.Attempts) == 2 &&
+		!isAttemptCanceled(d.Attempts[0]) && !isAttemptCanceled(d.Attempts[1]) &&
+		(d.Attempts[0].Status != d.Attempts[1].Status || errorKind(d.Attempts[0].Error) != errorKind(d.Attempts[1].Error)) {
+		add("address_family_difference", "IPv4 与 IPv6 连接结果不同", "两个地址族各探测了首个解析地址，结果不同；不能据此断定整个地址族都不可用。", "dns", "tcp")
+	}
 	if r.TLS.Status == diagnostic.StatusFailure {
 		if errorKind(r.TLS.Error) == "canceled" {
 			add("diagnosis_canceled", "诊断已取消", "TLS 探测被取消，不能据此判断证书或服务故障。", "tls")
@@ -135,6 +140,10 @@ func observedFailure(status diagnostic.Status, err *diagnostic.ProbeError) bool 
 	return status == diagnostic.StatusFailure && errorKind(err) != "canceled"
 }
 
+func isAttemptCanceled(attempt diagnostic.TCPAttempt) bool {
+	return errorKind(attempt.Error) == "canceled"
+}
+
 func isLoopbackTarget(host string) bool {
 	if strings.EqualFold(host, "localhost") {
 		return true
@@ -185,7 +194,22 @@ func sanitize(r diagnostic.Result) diagnostic.Result {
 		out.DNS.Data = &diagnostic.DNSData{IPv4: maskList(r.DNS.Data.IPv4, "[IP_REDACTED]"), IPv6: maskList(r.DNS.Data.IPv6, "[IP_REDACTED]")}
 	}
 	if r.TCP.Data != nil {
-		out.TCP.Data = &diagnostic.TCPData{ConnectedAddress: "[ADDRESS_REDACTED]"}
+		data := &diagnostic.TCPData{Attempts: make([]diagnostic.TCPAttempt, 0, len(r.TCP.Data.Attempts))}
+		if r.TCP.Data.ConnectedAddress != "" {
+			data.ConnectedAddress = "[ADDRESS_REDACTED]"
+		}
+		for _, attempt := range r.TCP.Data.Attempts {
+			family := "unknown"
+			if attempt.Family == "IPv4" || attempt.Family == "IPv6" {
+				family = attempt.Family
+			}
+			entry := diagnostic.TCPAttempt{Family: family, Address: "[ADDRESS_REDACTED]", Status: diagnostic.Status(safeStatus(attempt.Status)), DurationMs: attempt.DurationMs}
+			if attempt.Error != nil {
+				entry.Error = &diagnostic.ProbeError{Kind: safeErrorKind(attempt.Error.Kind), Message: "[ERROR_REDACTED]"}
+			}
+			data.Attempts = append(data.Attempts, entry)
+		}
+		out.TCP.Data = data
 	}
 	if d := r.TLS.Data; d != nil {
 		out.TLS.Data = &diagnostic.TLSData{

@@ -20,6 +20,12 @@ import (
 
 type missingResolver struct{}
 
+type fixedResolver struct{ addresses []net.IPAddr }
+
+func (r fixedResolver) LookupIPAddr(context.Context, string) ([]net.IPAddr, error) {
+	return r.addresses, nil
+}
+
 func (missingResolver) LookupIPAddr(_ context.Context, host string) ([]net.IPAddr, error) {
 	return nil, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
 }
@@ -175,6 +181,60 @@ func TestRefusedConnectionSkipsDependentLayers(t *testing.T) {
 	}
 	if result.TLS.Status != StatusSkipped || result.HTTP.Status != StatusSkipped {
 		t.Fatalf("dependent layers should be skipped: %+v %+v", result.TLS, result.HTTP)
+	}
+}
+
+func TestTCPRecordsBothAddressFamilies(t *testing.T) {
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	_, port, err := net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	step := probeTCP(context.Background(), port, DNSData{IPv4: []string{"127.0.0.1"}, IPv6: []string{"::1"}}, time.Second)
+	if step.Status != StatusSuccess || step.Data == nil || len(step.Data.Attempts) != 2 {
+		t.Fatalf("missing per-family attempts: %+v", step)
+	}
+	if step.Data.Attempts[0].Family != "IPv4" || step.Data.Attempts[0].Status != StatusSuccess ||
+		step.Data.Attempts[0].Address != listener.Addr().String() ||
+		step.Data.Attempts[1].Family != "IPv6" || step.Data.Attempts[1].Status != StatusFailure {
+		t.Fatalf("wrong address-family evidence: %+v", step.Data.Attempts)
+	}
+}
+
+func TestTCPFailureKeepsAttemptedAddress(t *testing.T) {
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, port, _ := net.SplitHostPort(listener.Addr().String())
+	listener.Close()
+	step := probeTCP(context.Background(), port, DNSData{IPv4: []string{"127.0.0.1"}}, time.Second)
+	if step.Status != StatusFailure || step.Data == nil || len(step.Data.Attempts) != 1 ||
+		step.Data.Attempts[0].Address == "" || step.Data.Attempts[0].Error == nil {
+		t.Fatalf("failed TCP attempt lost evidence: %+v", step)
+	}
+}
+
+func TestHTTPUsesSuccessfulTCPAddress(t *testing.T) {
+	var expectedHost string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Host != expectedHost {
+			t.Errorf("unexpected host header: %q", r.Host)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	_, port, _ := net.SplitHostPort(server.Listener.Addr().String())
+	expectedHost = "probe.invalid:" + port
+	result, err := Run(context.Background(), "http://probe.invalid:"+port, Options{
+		Resolver: fixedResolver{addresses: []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}}},
+	})
+	if err != nil || result.TCP.Status != StatusSuccess || result.HTTP.Status != StatusSuccess {
+		t.Fatalf("HTTP did not reuse the tested address: %+v %+v %v", result.TCP, result.HTTP, err)
 	}
 }
 

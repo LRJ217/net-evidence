@@ -113,7 +113,7 @@ func TestHTTPSRequestUsesProxyConnect(t *testing.T) {
 	if reason != "" {
 		t.Fatalf("proxy not selected: %s", reason)
 	}
-	step := requestHTTP(context.Background(), endpoint, Options{RootCAs: roots}.withDefaults(), selected, 5*time.Second, "proxy_http", "system_proxy")
+	step := requestHTTP(context.Background(), endpoint, Options{RootCAs: roots}.withDefaults(), selected, 5*time.Second, "proxy_http", "system_proxy", "")
 	if step.Status != StatusSuccess || step.Data.StatusCode != http.StatusNoContent {
 		t.Fatalf("HTTPS proxy path failed: %+v", step)
 	}

@@ -25,7 +25,11 @@ func TestSharedFormatsDoNotLeakRawEvidence(t *testing.T) {
 		DNS: diagnostic.Step[diagnostic.DNSData]{ID: "dns", Status: diagnostic.StatusSuccess,
 			Data: &diagnostic.DNSData{IPv4: []string{"192.168.1.10", "8.8.8.8"}, IPv6: []string{"fd00::1"}}},
 		TCP: diagnostic.Step[diagnostic.TCPData]{ID: "tcp", Status: diagnostic.StatusSuccess,
-			Data: &diagnostic.TCPData{ConnectedAddress: "192.168.1.10:443"}},
+			Data: &diagnostic.TCPData{ConnectedAddress: "192.168.1.10:443", Attempts: []diagnostic.TCPAttempt{
+				{Family: "IPv4", Address: "192.168.1.10:443", Status: diagnostic.StatusSuccess},
+				{Family: "IPv6", Address: "[fd00::1]:443", Status: diagnostic.StatusFailure,
+					Error: &diagnostic.ProbeError{Kind: "timeout", Message: secretToken}},
+			}}},
 		TLS: diagnostic.Step[diagnostic.TLSData]{ID: "tls", Status: diagnostic.StatusFailure,
 			Error: &diagnostic.ProbeError{Kind: "certificate_invalid", Message: secretPath},
 			Data: &diagnostic.TLSData{Protocol: secretToken, CipherSuite: secretToken, VerifyError: secretPath,
@@ -71,11 +75,33 @@ func TestSharedFormatsDoNotLeakRawEvidence(t *testing.T) {
 	if string(before) != string(after) {
 		t.Fatal("Build mutated raw evidence")
 	}
-	if len(report.Findings) == 0 || report.Findings[0].EvidenceIDs[0] != "tls" {
+	hasTLSFinding := false
+	for _, finding := range report.Findings {
+		if len(finding.EvidenceIDs) > 0 && finding.EvidenceIDs[0] == "tls" {
+			hasTLSFinding = true
+		}
+	}
+	if !hasTLSFinding {
 		t.Fatalf("missing evidence reference: %+v", report.Findings)
 	}
 	if report.Evidence.ProxyHTTP == nil || report.Evidence.ProxyHTTP.Data.Transport != "system_proxy" {
 		t.Fatalf("proxy evidence was lost: %+v", report.Evidence.ProxyHTTP)
+	}
+	if len(report.Evidence.TCP.Data.Attempts) != 2 || report.Evidence.TCP.Data.Attempts[1].Family != "IPv6" ||
+		report.Evidence.TCP.Data.Attempts[1].Address != "[ADDRESS_REDACTED]" {
+		t.Fatalf("per-family TCP evidence was not safely projected: %+v", report.Evidence.TCP.Data)
+	}
+}
+
+func TestAddressFamilyDifferenceFinding(t *testing.T) {
+	r := diagnostic.Result{TCP: diagnostic.Step[diagnostic.TCPData]{Status: diagnostic.StatusSuccess,
+		Data: &diagnostic.TCPData{Attempts: []diagnostic.TCPAttempt{
+			{Family: "IPv4", Status: diagnostic.StatusSuccess},
+			{Family: "IPv6", Status: diagnostic.StatusFailure, Error: &diagnostic.ProbeError{Kind: "network_unreachable"}},
+		}}}}
+	findings := Analyze(r)
+	if len(findings) != 1 || findings[0].ID != "address_family_difference" {
+		t.Fatalf("family difference was omitted: %+v", findings)
 	}
 }
 
