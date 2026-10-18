@@ -39,32 +39,50 @@ func Run(ctx context.Context, input string, options Options) (result Result, err
 	defer func() { result.DurationMs = time.Since(start).Milliseconds() }()
 
 	result.Environment = probeEnvironment()
+	progress(options, "environment", result.Environment.Status, result.Environment.DurationMs)
 	result.DNS = probeDNS(ctx, target.Host, options.DNSTimeout, options.Resolver)
+	progress(options, "dns", result.DNS.Status, result.DNS.DurationMs)
 	if result.DNS.Status != StatusSuccess {
 		result.TCP = skipped[TCPData]("tcp", "DNS did not resolve")
 		result.TLS = skipped[TLSData]("tls", "DNS did not resolve")
 		result.HTTP = skipped[HTTPData]("http", "DNS did not resolve")
+		progress(options, "tcp", result.TCP.Status, 0)
+		progress(options, "tls", result.TLS.Status, 0)
+		progress(options, "http", result.HTTP.Status, 0)
 		return result, nil
 	}
 
 	result.TCP = probeTCP(ctx, target.Address, options.TCPTimeout)
+	progress(options, "tcp", result.TCP.Status, result.TCP.DurationMs)
 	if result.TCP.Status != StatusSuccess {
 		result.TLS = skipped[TLSData]("tls", "TCP connection failed")
 		result.HTTP = skipped[HTTPData]("http", "TCP connection failed")
+		progress(options, "tls", result.TLS.Status, 0)
+		progress(options, "http", result.HTTP.Status, 0)
 		return result, nil
 	}
 
 	if target.Scheme == "https" {
 		result.TLS = probeTLS(ctx, target, options)
+		progress(options, "tls", result.TLS.Status, result.TLS.DurationMs)
 		if result.TLS.Status != StatusSuccess {
 			result.HTTP = skipped[HTTPData]("http", "TLS verification or handshake failed")
+			progress(options, "http", result.HTTP.Status, 0)
 			return result, nil
 		}
 	} else {
 		result.TLS = skipped[TLSData]("tls", "HTTP target does not use TLS")
+		progress(options, "tls", result.TLS.Status, 0)
 	}
 	result.HTTP = probeHTTP(ctx, target, options)
+	progress(options, "http", result.HTTP.Status, result.HTTP.DurationMs)
 	return result, nil
+}
+
+func progress(options Options, id string, status Status, durationMs int64) {
+	if options.OnStep != nil {
+		options.OnStep(StepProgress{ID: id, Status: status, DurationMs: durationMs})
+	}
 }
 
 func skipped[T any](id, reason string) Step[T] {

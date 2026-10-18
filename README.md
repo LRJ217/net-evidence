@@ -2,7 +2,7 @@
 
 Windows 本地网络故障证据工具。输入 URL、域名或 `host:port`，按 DNS、TCP、TLS、HTTP 和本机环境分层探测；将原始证据、带依据的“可能原因”和脱敏报告交给用户。
 
-> 阶段 2 已实现证据规则、默认脱敏的 CLI 和三种分享报告。当前桌面界面仍是构建验证页；交互、历史和对比在阶段 3 实现。
+> 阶段 3 已接入桌面诊断、逐层进度与取消、分层详情、报告预览、本机历史和两次诊断对比。
 
 ## 目标与技术
 
@@ -39,7 +39,13 @@ NetEvidence 解决“用户只说打不开、支持人员难以复现”的问�
 
 默认的 JSON、HTML 和 Issue Markdown 报告都只读取脱敏后的证据，并把“可能原因”与其依据 ID 分开呈现。分享版会移除 URL 路径与查询值、IP、MAC、代理详情、证书名称和原始错误文本；发送前仍应预览。`-format raw-json` 是未脱敏的本机原始证据，可能包含 URL Token、代理、本机 IP 和 MAC，请勿直接公开。HTTP 请求当前直连目标，系统代理只采集为证据。
 
-阶段 1 和阶段 2 的实现边界及测试证据见 [探测验证](docs/verification-stage1.md) 与 [分享验证](docs/verification-stage2.md)。
+## 桌面应用
+
+运行 `build/bin/NetEvidence.exe`，输入 URL、域名或 `host:port`，选择总超时后开始诊断。界面会逐层更新状态与耗时；运行中可取消，已取得的证据仍保留。完成后可展开脱敏的分层详情，查看可能原因，预览 JSON、HTML 或 Issue Markdown，并将当前格式另存为新文件。
+
+历史记录保存在当前用户的 `%LOCALAPPDATA%\NetEvidence\history`，包含本机原始诊断数据，请按敏感文件管理。侧栏只展示脱敏摘要；打开历史会重新生成脱敏报告。对比页可选择两次诊断，查看各层状态与耗时变化。当前只列出最近 100 条，损坏的历史文件会跳过并提示。桌面导出仅提供脱敏格式，且不会覆盖已有文件。
+
+各阶段的实现边界及测试证据见 [探测验证](docs/verification-stage1.md)、[分享验证](docs/verification-stage2.md) 与 [桌面验证](docs/verification-stage3.md)。
 
 ## 阶段
 

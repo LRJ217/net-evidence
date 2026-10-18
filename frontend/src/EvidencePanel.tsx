@@ -1,0 +1,82 @@
+import { useState } from 'react'
+import type { Evidence, Format, HistorySummary, Report, Status, Step } from './types'
+
+export const layers = [
+  { id: 'dns', label: 'DNS', subtitle: '解析目标地址' },
+  { id: 'tcp', label: 'TCP', subtitle: '建立端口连接' },
+  { id: 'tls', label: 'TLS', subtitle: '验证证书与握手' },
+  { id: 'http', label: 'HTTP', subtitle: '检查服务响应' },
+  { id: 'environment', label: '本机环境', subtitle: '代理与网卡信息' },
+] as const
+
+export const statusText: Record<Status | 'pending', string> = {
+  success: '通过', failure: '失败', partial: '部分完成', skipped: '跳过', pending: '等待中',
+}
+const outcomeText: Record<string, string> = { success: '可访问', failure: '有故障', attention: '需关注', partial: '未完成' }
+const formatText: Record<Format, string> = { json: 'JSON', html: 'HTML', issue: 'Issue Markdown' }
+
+export function dateText(value: string) { return new Date(value).toLocaleString('zh-CN', { hour12: false }) }
+
+function evidenceStep(evidence: Evidence, id: string): Step {
+  return evidence[id as keyof Pick<Evidence, 'dns' | 'tcp' | 'tls' | 'http' | 'environment'>] as Step
+}
+
+function factsFor(id: string, step: Step): string[] {
+  const d = step.data as Record<string, unknown> | undefined
+  if (!d) return step.reason ? [step.reason] : []
+  if (id === 'dns') return [`IPv4：${(d.ipv4 as string[] | undefined)?.length ?? 0} 个`, `IPv6：${(d.ipv6 as string[] | undefined)?.length ?? 0} 个`]
+  if (id === 'tcp') return ['目标端口已建立连接']
+  if (id === 'tls') return [
+    `协议：${String(d.protocol ?? '未知')}`,
+    `证书域名：${d.hostname_valid ? '匹配' : '未通过'}`,
+    `证书时间：${d.time_valid ? '有效' : '未通过'}`,
+    `信任验证：${d.verified ? '通过' : '未通过'}`,
+  ]
+  if (id === 'http') return [`状态码：${String(d.status_code ?? '—')}`, `响应跳数：${(d.hops as unknown[] | undefined)?.length ?? 0}`]
+  if (id === 'environment') {
+    const proxy = d.proxy as { enabled?: boolean } | undefined
+    return [`系统代理：${proxy?.enabled ? '已启用' : '未启用'}`, `活动网卡：${(d.interfaces as unknown[] | undefined)?.length ?? 0} 个`]
+  }
+  return []
+}
+
+interface Props {
+  report: Report | null
+  busy: boolean
+  progress: Record<string, { status: Status; duration_ms: number }>
+  selectedSummary?: HistorySummary
+  selectedId: string
+  format: Format
+  preview: string
+  onFormat: (format: Format) => void
+  onExport: () => void
+}
+
+export function EvidencePanel({ report, busy, progress, selectedSummary, selectedId, format, preview, onFormat, onExport }: Props) {
+  const [selectedLayer, setSelectedLayer] = useState<string>('dns')
+  const finished = Object.keys(progress).length
+  return <>
+    <div className="section-heading"><div><div className="eyebrow small">LIVE EVIDENCE</div><h2>分层证据</h2></div><span className="section-meta">{busy ? `已完成 ${finished} / 5 层` : report ? `耗时 ${report.evidence.duration_ms} ms` : '等待开始'}</span></div>
+    <div className="layer-grid">{layers.map((layer, index) => {
+      const step = report ? evidenceStep(report.evidence, layer.id) : progress[layer.id]
+      const status = step?.status ?? 'pending'
+      const details = report && step ? factsFor(layer.id, step as Step) : []
+      const errorKind = report && step ? (step as Step).error?.kind : undefined
+      return <article className={`layer-card ${status}`} key={layer.id}>
+        <div className="layer-top"><span className="layer-index">{String(index + 1).padStart(2, '0')}</span><span className={`status-pill ${status}`}>{statusText[status]}</span></div>
+        <h3>{layer.label}</h3><p>{layer.subtitle}</p>
+        {step && <div className="layer-duration">{step.duration_ms} ms</div>}
+        {details.length > 0 && <ul>{details.map((fact, i) => <li key={i}>{fact}</li>)}</ul>}
+        {errorKind && <div className="error-kind">{errorKind}</div>}
+      </article>
+    })}</div>
+    {report ? <>
+      <details className="panel detail-panel"><summary>分层详情 <span>查看已脱敏的结构化证据</span></summary><div className="detail-tabs">{layers.map(layer => <button key={layer.id} className={selectedLayer === layer.id ? 'selected' : ''} onClick={() => setSelectedLayer(layer.id)}>{layer.label}</button>)}</div><pre>{JSON.stringify(evidenceStep(report.evidence, selectedLayer), null, 2)}</pre></details>
+      <div className="results-grid">
+        <section className="panel findings-panel"><div className="panel-heading"><div><div className="eyebrow small">INTERPRETATION</div><h2>可能原因</h2></div><span className="panel-count">{report.findings.length} 条推断</span></div><div className="findings-list">{report.findings.map(finding => <article key={finding.id}><div className="finding-marker">?</div><div><h3>{finding.title}</h3><p>{finding.explanation}</p><small>依据：{finding.evidence_ids.map(id => <code key={id}>{id}</code>)}</small></div></article>)}</div></section>
+        <section className="panel snapshot-panel"><div className="eyebrow small">SNAPSHOT</div><h2>本次诊断</h2><dl><div><dt>目标</dt><dd title={report.evidence.target.url}>{report.evidence.target.url}</dd></div><div><dt>开始时间</dt><dd>{dateText(report.evidence.started_at)}</dd></div><div><dt>记录</dt><dd>{selectedSummary ? outcomeText[selectedSummary.outcome] ?? selectedSummary.outcome : '未保存'}</dd></div><div><dt>隐私</dt><dd>分享版已脱敏</dd></div></dl><p className="privacy-note">{report.privacy_note}</p></section>
+      </div>
+      <section className="panel preview-panel"><div className="panel-heading"><div><div className="eyebrow small">SHARE REPORT</div><h2>报告预览</h2></div><button className="secondary-button" onClick={onExport} disabled={!selectedId}>另存为文件 ↗</button></div><div className="format-tabs" role="tablist" aria-label="报告格式">{(['json', 'html', 'issue'] as Format[]).map(item => <button key={item} role="tab" aria-selected={format === item} className={format === item ? 'selected' : ''} onClick={() => onFormat(item)}>{formatText[item]}</button>)}</div>{format === 'html' && preview.startsWith('<!doctype') ? <iframe className="html-preview" title="脱敏 HTML 报告预览" sandbox="" srcDoc={preview} /> : <pre className="text-preview">{preview || '选择一条已保存记录以预览报告。'}</pre>}</section>
+    </> : <section className="empty-results"><div className="empty-symbol">⌁</div><h2>证据会在这里汇集</h2><p>运行诊断后，可查看逐层结果、可能原因和三种脱敏报告。</p></section>}
+  </>
+}

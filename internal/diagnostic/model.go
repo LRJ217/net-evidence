@@ -115,6 +115,14 @@ type Options struct {
 	RootCAs *x509.CertPool
 	// Resolver permits deterministic DNS tests and custom local resolution.
 	Resolver IPResolver
+	// OnStep receives a small, non-sensitive update after each layer finishes.
+	OnStep func(StepProgress)
+}
+
+type StepProgress struct {
+	ID         string `json:"id"`
+	Status     Status `json:"status"`
+	DurationMs int64  `json:"duration_ms"`
 }
 
 type IPResolver interface {

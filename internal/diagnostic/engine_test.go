@@ -25,7 +25,11 @@ func (missingResolver) LookupIPAddr(_ context.Context, host string) ([]net.IPAdd
 }
 
 func TestDNSFailureSkipsNetworkLayers(t *testing.T) {
-	result, err := Run(context.Background(), "missing.invalid", Options{Resolver: missingResolver{}})
+	var progress []StepProgress
+	result, err := Run(context.Background(), "missing.invalid", Options{
+		Resolver: missingResolver{},
+		OnStep:   func(step StepProgress) { progress = append(progress, step) },
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,6 +38,10 @@ func TestDNSFailureSkipsNetworkLayers(t *testing.T) {
 	}
 	if result.TCP.Status != StatusSkipped || result.TLS.Status != StatusSkipped || result.HTTP.Status != StatusSkipped {
 		t.Fatalf("dependent layers were not skipped: %+v", result)
+	}
+	if len(progress) != 5 || progress[0].ID != "environment" || progress[1].ID != "dns" ||
+		progress[2].Status != StatusSkipped || progress[3].Status != StatusSkipped || progress[4].Status != StatusSkipped {
+		t.Fatalf("unexpected progress sequence: %+v", progress)
 	}
 }
 
