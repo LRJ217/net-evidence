@@ -25,7 +25,7 @@ NetEvidence 解决“用户只说打不开、支持人员难以复现”的问�
 
 若 `go` 已在 PATH 中，可省略 `-GoExe`。默认 `GOPROXY=https://goproxy.cn,direct`，可用 `-GoProxy` 覆盖。第一次构建需下载依赖。
 
-`package.ps1` 另需 NSIS，生成当前用户安装范围的 `build/bin/NetEvidence-amd64-installer.exe`，不要求管理员权限。安装包尚未签名，也未公开发布。
+`package.ps1` 另需 NSIS，生成当前用户安装范围的 `build/bin/NetEvidence-amd64-installer.exe`，不要求管理员权限。安装包尚未签名；[v0.1.0-preview.1 预发布版](https://github.com/LRJ217/net-evidence/releases/tag/v0.1.0-preview.1)提供安装包、SHA-256 校验文件和已知限制。
 
 ## 命令行诊断
 
