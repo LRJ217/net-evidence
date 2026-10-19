@@ -16,7 +16,7 @@ CLI 将结果编码为 JSON；它不是分享报告，当前没有脱敏。
 - `go vet ./...`：通过。
 - `go build -o build/bin/net-evidence-cli.exe ./cmd/net-evidence`：Windows CLI 构建通过。
 - CLI 本机关闭端口实测：DNS 成功，TCP 返回 `connection_refused`，TLS 与 HTTP 均标注跳过。
-- [阶段 1 核心提交的 GitHub Actions](https://github.com/LRJ217/net-evidence/actions/runs/39042973662)：Go 测试、前端检查及 Windows 桌面构建通过。
+- 当时私有开发仓库的阶段 1 GitHub Actions：Go 测试、前端检查及 Windows 桌面构建通过。原始运行记录不在公开预览仓库中。
 - 更新后的 `dev.ps1 -Task build`：本机再次通过前端检查、Go 测试、Go vet、CLI 和 Wails 桌面构建。
 
 ## 剩余风险

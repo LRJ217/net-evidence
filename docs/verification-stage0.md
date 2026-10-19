@@ -15,7 +15,7 @@
 - `dev.ps1 -Task test`：`npm ci`、TypeScript 检查、Vite 构建、`go test ./...` 通过。当前 Go 包尚无测试文件。
 - `dev.ps1 -Task build`：Wails CLI v2.15.0 将应用构建为 `build/bin/NetEvidence.exe`，Windows amd64，构建完成。
 - 在未保留 `build/` 资源文件的情况下再次构建通过；Wails 会生成阶段 0 的默认资源，仓库无需提交模板图标。
-- [GitHub Actions Windows CI](https://github.com/LRJ217/net-evidence/actions/runs/39041219065)：前端依赖安装、TypeScript 检查、前端构建、Go 检查、Wails CLI 安装和 Windows 桌面构建全部成功。
+- 当时私有开发仓库的 GitHub Actions Windows CI：前端依赖安装、TypeScript 检查、前端构建、Go 检查、Wails CLI 安装和 Windows 桌面构建全部成功。原始运行记录不在公开预览仓库中。
 
 ## 剩余风险
 

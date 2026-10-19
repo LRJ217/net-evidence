@@ -1,6 +1,6 @@
 # 实施路线图
 
-每阶段完成后记录原理、实现、验证证据和剩余风险；以可验证的小里程碑同步私有仓库。
+每阶段完成后记录原理、实现、验证证据和剩余风险。阶段 0–5 的原始 CI 运行留在私有开发仓库；公开预览仓库从发布时开始运行自己的 CI。
 
 ## 阶段 0：项目基线
 
@@ -10,7 +10,7 @@
 - [x] 固定 Go/Wails 与前端依赖
 - [x] Go 测试、前端检查及 Windows 构建 CI
 
-验收：本地检查与 [GitHub Actions Windows CI](https://github.com/LRJ217/net-evidence/actions/runs/39041219065) 通过；仓库仍私有。具体证据见 [阶段 0 验证记录](verification-stage0.md)。
+验收：本地检查与当时私有开发仓库的 Windows CI 通过。具体证据见 [阶段 0 验证记录](verification-stage0.md)。
 
 ## 阶段 1：探测引擎和 CLI
 
@@ -19,7 +19,7 @@
 - [x] 超时、取消、错误分类、跳过状态与 JSON CLI
 - [x] 本地服务器覆盖成功、拒绝、超时、重定向和证书错误
 
-验收：本地测试与 [阶段 1 核心提交的 Windows CI](https://github.com/LRJ217/net-evidence/actions/runs/39042973662) 通过。详细证据及局限见 [阶段 1 验证记录](verification-stage1.md)。
+验收：本地测试与当时私有开发仓库的 Windows CI 通过。详细证据及局限见 [阶段 1 验证记录](verification-stage1.md)。
 
 ## 阶段 2：解释与分享
 
