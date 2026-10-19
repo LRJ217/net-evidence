@@ -74,6 +74,39 @@ export interface VariantResult {
   duration_ms: number
 }
 export interface VariantsComplete { run_id: string; cancelled: boolean }
+export interface HarResource {
+  number: number
+  url: string
+  host: string
+  method: string
+  kind: string
+  issue: string
+  status: number
+  duration_ms: number
+  offset_ms?: number
+  dns_ms?: number
+  connect_ms?: number
+  tls_ms?: number
+  wait_ms?: number
+  receive_ms?: number
+}
+export interface HarHostSummary { host: string; requests: number; problems: number; slow: number }
+export interface HarAnalysis {
+  schema_version: number
+  capture_started_at?: string
+  main_host?: string
+  total_entries: number
+  supported_entries: number
+  ignored_entries: number
+  no_response: number
+  http_errors: number
+  slow: number
+  document_ok: boolean
+  other_host_requests: number
+  rows: HarResource[]
+  omitted_rows: number
+  hosts: HarHostSummary[]
+}
 export interface ComparisonRow {
   id: string
   left_status: Status
@@ -106,6 +139,7 @@ export interface DesktopBridge {
   StartDiagnosis(input: string, timeoutSeconds: number): Promise<string>
   StartObservation(input: string, timeoutSeconds: number, intervalSeconds: number, durationMinutes: number): Promise<string>
   StartVariants(input: string, timeoutSeconds: number): Promise<string>
+  ImportHAR(): Promise<HarAnalysis | null>
   CancelDiagnosis(): Promise<boolean>
   ListHistory(): Promise<HistoryListing>
   ListHistoryPage(afterID: string): Promise<HistoryListing>

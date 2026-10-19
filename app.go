@@ -10,6 +10,7 @@ import (
 
 	"github.com/LRJ217/net-evidence/internal/desktop"
 	"github.com/LRJ217/net-evidence/internal/diagnostic"
+	"github.com/LRJ217/net-evidence/internal/har"
 	"github.com/LRJ217/net-evidence/internal/history"
 	"github.com/LRJ217/net-evidence/internal/share"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -78,6 +79,48 @@ func (a *App) PreviewReport(id, format string) (string, error) {
 
 func (a *App) CompareHistory(leftID, rightID string) (history.Comparison, error) {
 	return a.service.Compare(leftID, rightID)
+}
+
+// ImportHAR returns a redacted in-memory summary. The selected file is never
+// copied to history, and its raw headers or bodies never reach the frontend.
+func (a *App) ImportHAR() (*har.Analysis, error) {
+	a.mu.RLock()
+	ctx := a.ctx
+	a.mu.RUnlock()
+	if ctx == nil {
+		return nil, fmt.Errorf("桌面窗口尚未就绪")
+	}
+	path, err := runtime.OpenFileDialog(ctx, runtime.OpenDialogOptions{
+		Title:   "选择浏览器 HAR 文件",
+		Filters: []runtime.FileFilter{{DisplayName: "HAR 文件", Pattern: "*.har"}, {DisplayName: "JSON 文件", Pattern: "*.json"}},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("无法选择 HAR 文件")
+	}
+	if path == "" {
+		return nil, nil
+	}
+	return analyzeHARFile(path)
+}
+
+func analyzeHARFile(path string) (*har.Analysis, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("无法读取 HAR 文件")
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("请选择普通 HAR 文件")
+	}
+	if info.Size() > har.MaxFileBytes {
+		return nil, fmt.Errorf("HAR 文件不能超过 %d MiB", har.MaxFileBytes>>20)
+	}
+	analysis, err := har.Analyze(file)
+	if err != nil {
+		return nil, err
+	}
+	return &analysis, nil
 }
 
 func (a *App) ExportReport(id, format string) (string, error) {

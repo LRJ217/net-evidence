@@ -423,6 +423,9 @@ func safeHost(host string) string {
 	return host
 }
 
+// RedactHost retains only a validated hostname; literal IP addresses are hidden.
+func RedactHost(host string) string { return safeHost(host) }
+
 func safeURL(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
@@ -445,3 +448,6 @@ func safeURL(raw string) string {
 	}
 	return result
 }
+
+// RedactURL removes credentials, paths, queries, and fragments from a URL.
+func RedactURL(raw string) string { return safeURL(raw) }

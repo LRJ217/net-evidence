@@ -3,7 +3,8 @@ import type { FormEvent } from 'react'
 import { ComparePanel } from './ComparePanel'
 import { ObservationPanel, VariantsPanel } from './BatchPanels'
 import { dateText, EvidencePanel } from './EvidencePanel'
-import type { Comparison, CompleteEvent, DesktopBridge, Format, HistoryListing, HistorySummary, ObservationComplete, ObservationSample, ProgressEvent, Report, Status, TCPData, VariantResult, VariantsComplete } from './types'
+import { HarPanel } from './HarPanel'
+import type { Comparison, CompleteEvent, DesktopBridge, Format, HarAnalysis, HistoryListing, HistorySummary, ObservationComplete, ObservationSample, ProgressEvent, Report, Status, TCPData, VariantResult, VariantsComplete } from './types'
 
 type DiagnosisMode = 'single' | 'observation' | 'variants'
 
@@ -26,6 +27,11 @@ export function App() {
   const [observationComplete, setObservationComplete] = useState<ObservationComplete | null>(null)
   const [variantRows, setVariantRows] = useState<VariantResult[]>([])
   const [variantsComplete, setVariantsComplete] = useState<VariantsComplete | null>(null)
+  const [harAnalysis, setHarAnalysis] = useState<HarAnalysis | null>(null)
+  const [harImporting, setHarImporting] = useState(false)
+  const [harDiagnosticId, setHarDiagnosticId] = useState('')
+  const [harDiagnostic, setHarDiagnostic] = useState<Report | null>(null)
+  const [harDiagnosticLoading, setHarDiagnosticLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [canceling, setCanceling] = useState(false)
   const [progress, setProgress] = useState<Record<string, { status: Status; duration_ms: number }>>({})
@@ -36,7 +42,7 @@ export function App() {
   const [activeSummary, setActiveSummary] = useState<HistorySummary | null>(null)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [retentionDays, setRetentionDays] = useState(90)
-  const [view, setView] = useState<'diagnosis' | 'compare'>('diagnosis')
+  const [view, setView] = useState<'diagnosis' | 'compare' | 'har'>('diagnosis')
   const [format, setFormat] = useState<Format>('json')
   const [preview, setPreview] = useState('')
   const [comparison, setComparison] = useState<Comparison | null>(null)
@@ -49,6 +55,7 @@ export function App() {
   const lastCompletedID = useRef('')
   const loadSequence = useRef(0)
   const historySequence = useRef(0)
+  const harDiagnosticSequence = useRef(0)
 
   const refreshHistory = useCallback(async () => {
     const api = bridge()
@@ -205,6 +212,32 @@ export function App() {
     catch (err) { setError(`对比失败：${message(err)}`) }
   }
 
+  async function importHar() {
+    const api = bridge()
+    if (!api || harImporting || busy) return
+    setError(''); setNotice(''); setHarImporting(true)
+    try {
+      const analysis = await api.ImportHAR()
+      if (analysis) {
+        setHarAnalysis(analysis)
+        setNotice(`已分析 ${analysis.supported_entries} 条浏览器 HTTP(S) 请求；原始 HAR 未写入历史。`)
+      }
+    } catch (err) { setError(`HAR 分析失败：${message(err)}`) }
+    finally { setHarImporting(false) }
+  }
+
+  async function selectHarDiagnostic(id: string) {
+    const api = bridge()
+    const sequence = ++harDiagnosticSequence.current
+    setHarDiagnosticId(id); setHarDiagnostic(null); setHarDiagnosticLoading(Boolean(id))
+    if (!api || !id) return
+    try {
+      const report = await api.LoadReport(id)
+      if (sequence === harDiagnosticSequence.current) setHarDiagnostic(report)
+    } catch (err) { if (sequence === harDiagnosticSequence.current) setError(`读取对照诊断失败：${message(err)}`) }
+    finally { if (sequence === harDiagnosticSequence.current) setHarDiagnosticLoading(false) }
+  }
+
   async function exportReport() {
     const api = bridge()
     if (!api || !selectedId) return
@@ -238,6 +271,10 @@ export function App() {
     if (removedID && (leftID === removedID || rightID === removedID)) {
       setLeftID(''); setRightID(''); setComparison(null)
     }
+    if (removedID && harDiagnosticId === removedID) {
+      ++harDiagnosticSequence.current
+      setHarDiagnosticId(''); setHarDiagnostic(null); setHarDiagnosticLoading(false)
+    }
   }
 
   async function deleteSelected() {
@@ -268,6 +305,10 @@ export function App() {
         (rightID && !listing.items.some(item => item.id === rightID) && !await historyRecordExists(api, rightID))) {
         setLeftID(''); setRightID(''); setComparison(null)
       }
+      if (harDiagnosticId && !listing.items.some(item => item.id === harDiagnosticId) && !await historyRecordExists(api, harDiagnosticId)) {
+        ++harDiagnosticSequence.current
+        setHarDiagnosticId(''); setHarDiagnostic(null); setHarDiagnosticLoading(false)
+      }
       setNotice(`已清理 ${removed} 条过期诊断记录。`)
     } catch (err) { setError(`清理历史失败：${message(err)}`) }
   }
@@ -279,6 +320,7 @@ export function App() {
       <div className="sidebar-group-label">工作区</div>
       <button className={`nav-item ${view === 'diagnosis' ? 'active' : ''}`} onClick={() => setView('diagnosis')}><span className="nav-icon">⌁</span> 新建诊断</button>
       <button className={`nav-item ${view === 'compare' ? 'active' : ''}`} onClick={() => setView('compare')}><span className="nav-icon">⇄</span> 对比诊断</button>
+      <button className={`nav-item ${view === 'har' ? 'active' : ''}`} onClick={() => setView('har')}><span className="nav-icon">▦</span> 浏览器记录</button>
       <div className="history-heading"><span>最近诊断</span><button onClick={() => void refreshHistory()} aria-label="刷新历史">↻</button></div>
       <div className="history-list">
         {history.items.length === 0 && <div className="empty-history">{history.total_files ? '本页没有可读取的诊断记录。' : '还没有本机诊断记录。'}</div>}
@@ -291,7 +333,7 @@ export function App() {
       <div className="sidebar-foot"><span className="privacy-icon">◈</span><div>本机处理，分享前脱敏<small>历史仅保存在这台电脑</small></div></div>
     </aside>
     <main className="workspace">
-      <header className="topbar"><span>诊断工作台 <span className="breadcrumb">/ {view === 'compare' ? '结果对比' : '网络诊断'}</span></span><span className="local-badge"><i /> LOCAL DESKTOP</span></header>
+      <header className="topbar"><span>诊断工作台 <span className="breadcrumb">/ {view === 'compare' ? '结果对比' : view === 'har' ? '浏览器记录' : '网络诊断'}</span></span><span className="local-badge"><i /> LOCAL DESKTOP</span></header>
       <div className="workspace-content">
         {!available && <div className="alert warning" role="status">桌面服务未连接。请使用 NetEvidence 桌面程序运行诊断。</div>}
         {error && <div className="alert error" role="alert">{error}<button onClick={() => setError('')} aria-label="关闭错误">×</button></div>}
@@ -310,7 +352,8 @@ export function App() {
           {mode === 'single' ? <EvidencePanel report={report} localTCP={localTCP} busy={busy} progress={progress} selectedSummary={selectedSummary} selectedId={selectedId} format={format} preview={preview} onFormat={setFormat} onExport={() => void exportReport()} onCopy={() => void copyReport()} />
             : mode === 'observation' ? <ObservationPanel samples={samples} complete={observationComplete} busy={busy} onOpen={item => void selectHistory(item)} />
               : <VariantsPanel rows={variantRows} complete={variantsComplete} busy={busy} />}
-        </> : <ComparePanel history={history.items} leftID={leftID} rightID={rightID} comparison={comparison} onLeft={id => { setLeftID(id); setComparison(null) }} onRight={id => { setRightID(id); setComparison(null) }} onCompare={() => void compare()} />}
+        </> : view === 'compare' ? <ComparePanel history={history.items} leftID={leftID} rightID={rightID} comparison={comparison} onLeft={id => { setLeftID(id); setComparison(null) }} onRight={id => { setRightID(id); setComparison(null) }} onCompare={() => void compare()} />
+          : <HarPanel analysis={harAnalysis} importing={harImporting || busy} onImport={() => void importHar()} history={history.items} diagnosticId={harDiagnosticId} onDiagnostic={id => void selectHarDiagnostic(id)} diagnostic={harDiagnostic} diagnosticLoading={harDiagnosticLoading} />}
       </div>
     </main>
   </div>

@@ -2,7 +2,7 @@
 
 Windows 本地网络故障证据工具。输入 URL、域名或 `host:port`，按 DNS、TCP、TLS、HTTP 和本机环境分层探测；将原始证据、带依据的“可能原因”和脱敏报告交给用户。
 
-> 桌面版已接入单次诊断、连续采样、四种网址入口对比、脱敏报告、本机历史和环境变化对比。
+> 桌面版已接入单次诊断、连续采样、四种网址入口对比、浏览器 HAR 分析、脱敏报告、本机历史和环境变化对比。
 
 ## 目标与技术
 
@@ -52,7 +52,9 @@ NetEvidence 解决“用户只说打不开、支持人员难以复现”的问�
 
 “连续采样”按 10/30/60 秒间隔持续 5/10/30 分钟，展示成功率、首次异常和故障层，只保留异常与首个成功样本到本机历史；“网址入口对比”并行检查主域名和 `www` 的 HTTP/HTTPS 首页，输入路径和查询不会带入四个请求。历史对比还显示代理、网卡及 DNS 答案是否变化，不输出这些配置的原始值。完整操作见 [使用说明](docs/user-guide.md)，可重复的四入口命令行检查见 `scripts/verify-site.ps1`。
 
-各阶段的实现边界及测试证据见 [探测验证](docs/verification-stage1.md)、[分享验证](docs/verification-stage2.md)、[桌面验证](docs/verification-stage3.md) 与 [交付验证](docs/verification-stage4.md)。
+“浏览器记录”可导入不超过 20 MiB 的 HAR 文件，归纳无 HTTP 响应、4xx/5xx 和耗时超过 3 秒的资源请求，并按主机汇总；可选择同站点的本机诊断记录并排对照。HAR 仅在内存中分析，不写入历史；界面只接收脱敏 URL、状态与耗时，不接收请求头、Cookie、请求体或响应体。演示文件见 [模拟浏览器故障 HAR](docs/samples/browser-failure.har)。
+
+各阶段的实现边界及测试证据见 [探测验证](docs/verification-stage1.md)、[分享验证](docs/verification-stage2.md)、[桌面验证](docs/verification-stage3.md)、[交付验证](docs/verification-stage4.md) 与 [HAR 验证](docs/verification-stage5.md)。
 
 ## 阶段
 
@@ -63,5 +65,6 @@ NetEvidence 解决“用户只说打不开、支持人员难以复现”的问�
 | 2 | 规则、脱敏和 JSON/HTML/GitHub Issue Markdown 报告 |
 | 3 | Wails 交互、进度、详情、历史与对比 |
 | 4 | Windows 打包、场景演示与课程材料 |
+| 5 | 浏览器 HAR 的本地脱敏分析与诊断对照 |
 
 原始诊断可能含敏感信息，请勿直接将 `raw-json` 贴到公开工单。仓库当前保持私有。
