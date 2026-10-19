@@ -77,6 +77,21 @@ func TestSaveListLoadAndCompare(t *testing.T) {
 	}
 }
 
+func TestRapidSavesKeepHistoryOrder(t *testing.T) {
+	store := Store{Dir: t.TempDir()}
+	previous := ""
+	for i := 0; i < 32; i++ {
+		summary, err := store.Save(sampleResult("http://127.0.0.1:8080/", diagnostic.StatusSuccess, 1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if summary.ID <= previous {
+			t.Fatalf("history ID did not increase: %q after %q", summary.ID, previous)
+		}
+		previous = summary.ID
+	}
+}
+
 func TestHistoryPagesKeepOlderRecordsReachable(t *testing.T) {
 	store := Store{Dir: t.TempDir()}
 	for i := 0; i < 85; i++ {

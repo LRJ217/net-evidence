@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"github.com/LRJ217/net-evidence/internal/diagnostic"
@@ -20,6 +21,7 @@ const maxRecordBytes = 2 << 20
 const historyPageSize = 40
 
 var validID = regexp.MustCompile(`^\d{8}T\d{6}\.\d{9}-[0-9a-f]{16}$`)
+var lastSavedAtUnixNano atomic.Int64
 
 type Record struct {
 	SchemaVersion int               `json:"schema_version"`
@@ -66,7 +68,7 @@ func (s Store) Save(result diagnostic.Result) (Summary, error) {
 	if _, err := rand.Read(random[:]); err != nil {
 		return Summary{}, err
 	}
-	now := time.Now().UTC()
+	now := nextSaveTime()
 	id := now.Format("20060102T150405.000000000") + "-" + hex.EncodeToString(random[:])
 	record := Record{SchemaVersion: 1, ID: id, SavedAt: now, Result: result}
 	data, err := json.MarshalIndent(record, "", "  ")
@@ -97,6 +99,21 @@ func (s Store) Save(result diagnostic.Result) (Summary, error) {
 		return Summary{}, err
 	}
 	return summarize(record), nil
+}
+
+// nextSaveTime keeps IDs ordered even when the system clock returns the same
+// timestamp for consecutive saves (which can happen on Windows).
+func nextSaveTime() time.Time {
+	for {
+		candidate := time.Now().UTC().UnixNano()
+		previous := lastSavedAtUnixNano.Load()
+		if candidate <= previous {
+			candidate = previous + 1
+		}
+		if lastSavedAtUnixNano.CompareAndSwap(previous, candidate) {
+			return time.Unix(0, candidate).UTC()
+		}
+	}
 }
 
 func (s Store) Load(id string) (Record, error) {
