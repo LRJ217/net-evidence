@@ -52,6 +52,8 @@ jobs:
           & $wails build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build user-scope installer
+        env:
+          GOFLAGS: -trimpath
         shell: pwsh
         run: |
           $nsisPaths = @(
@@ -65,6 +67,10 @@ jobs:
           $wails = Join-Path (go env GOPATH) 'bin/wails.exe'
           & $wails build -nsis -installscope user
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $buildInfo = go version -m build/bin/NetEvidence.exe
+          if (-not ($buildInfo -match 'build\s+-trimpath=true')) {
+            throw 'Installer application was built without path trimming.'
+          }
       - name: Smoke test installer and uninstaller
         shell: pwsh
         run: ./scripts/verify-installer.ps1
