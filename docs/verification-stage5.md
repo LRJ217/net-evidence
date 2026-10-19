@@ -7,7 +7,7 @@
 - `go test ./... -count=1`、`go vet ./...`、`npm run check` 及完整 Windows Wails 构建通过。
 - 解析器与桌面导入函数读取 [模拟 HAR](samples/browser-failure.har)：4 条 HTTP(S) 请求中，首个 HTML 为 200，另有 1 条 503、1 条无 HTTP 响应、1 条耗时 3.8 秒。非 HTTP(S) 请求会被忽略。
 - 隐私测试在 HAR 中放入用户信息、Cookie、URL Token、请求体、响应体、浏览器错误文本和本机 IP，序列化后的分析结果均未包含这些原始值。错误消息不回显无效 JSON；超过 20 MiB 的文件会被拒绝。
-- 桌面程序中的“浏览器记录”页面和 Windows HAR 文件选择框可打开。2026-10-19 用户提供的桌面截图显示，导入仓库附带的模拟 HAR 后，页面统计为 4 条 HTTP(S) 请求、1 条无 HTTP 响应、1 条 4xx/5xx 和 1 条慢请求，与样例数据一致。截图包含本机历史记录，未收入仓库；真实浏览器导出的 HAR 仍待验证。
+- 桌面程序中的“浏览器记录”页面和 Windows HAR 文件选择框可打开。2026-10-19 用户提供的桌面截图显示，导入仓库附带的模拟 HAR 后，页面统计为 4 条 HTTP(S) 请求、1 条无 HTTP 响应、1 条 4xx/5xx 和 1 条慢请求，与样例数据一致。随后导入真实浏览器 HAR 的截图显示 16 条 HTTP(S) 请求、0 条无响应、0 条 4xx/5xx、0 条慢请求，涉及 2 个主机。截图和真实 HAR 均未收入仓库。
 - `scripts/package.ps1` 生成当前用户安装范围的 `build/bin/NetEvidence-amd64-installer.exe`，大小为 6,947,150 字节，SHA-256 为 `A0D0660F7E772C2191EB4BC661FAFDEA0BC97D6E27558CB4F16BAE1F31AE4227`。
 
 ## 解释边界
