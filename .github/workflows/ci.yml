@@ -11,8 +11,8 @@ permissions:
 
 jobs:
   windows:
-    runs-on: windows-latest
-    timeout-minutes: 30
+    runs-on: windows-2022
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -51,3 +51,20 @@ jobs:
           $wails = Join-Path (go env GOPATH) 'bin/wails.exe'
           & $wails build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build user-scope installer
+        shell: pwsh
+        run: |
+          $nsisPaths = @(
+            'C:\Program Files (x86)\NSIS\makensis.exe',
+            'C:\Program Files\NSIS\makensis.exe',
+            'C:\ProgramData\chocolatey\bin\makensis.exe'
+          )
+          $nsis = $nsisPaths | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+          if (-not $nsis) { throw 'NSIS makensis.exe was not found on the Windows runner.' }
+          $env:PATH = "$(Split-Path -Parent $nsis);$env:PATH"
+          $wails = Join-Path (go env GOPATH) 'bin/wails.exe'
+          & $wails build -nsis -installscope user
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Smoke test installer and uninstaller
+        shell: pwsh
+        run: ./scripts/verify-installer.ps1
